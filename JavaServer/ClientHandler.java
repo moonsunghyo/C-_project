@@ -24,6 +24,16 @@ public class ClientHandler implements Runnable{
                 
                 //color 정보는 우리끼리 약속(예: 검정(0) 빨강(1) 노랑(2))
                 int color = dataIn.readInt();
+                
+                String message = x + "," + y + "," + color;
+
+                // 3. 접속된 모든 웹 브라우저에게 실시간 전송
+                if (main_server.webserver != null) {
+                    main_server.webserver.broadcast(message);
+                }
+
+                System.out.println("웹으로 중계됨: " + message);
+                
                 System.out.println("보낸 사람:" + ID + "/IP:" + socket.getInetAddress() + " -> X: " + x + ", Y: " + y + ", Color: " + color);
             }
         } catch (IOException e) {
