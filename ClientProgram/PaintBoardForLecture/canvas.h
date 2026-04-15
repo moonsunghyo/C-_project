@@ -5,9 +5,16 @@
 #include <QWidget>
 // 이미지 저장할 수 있는 클래스 헤더.
 #include <QImage>
-// 좌표 저장용 객체 헤더.
+// 좌표 저장용 클래스 헤더.
 #include <QPoint>
+// 색 저장하는 클래스 헤더
+#include <QColor>
 
+struct Stroke {
+    QList<QPoint> points; // 한 획을 저장할 리스트.
+    QColor color;
+    int size;
+};
 
 class Canvas : public QWidget
 {
@@ -24,6 +31,7 @@ public:
     void setTool(Tool tool);
     void setPenSize(int size);
     void setEraserSize(int size);
+    void setPenColor(const QColor& color);
 
 protected:
     //화면 다시 그릴 때 호출되는 함수.
@@ -36,23 +44,21 @@ protected:
     // QMouseEvent에 함수가 호출될 때의 마우스 상태를 담아서 인자로 전달 해 줌.
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 
 private:
-    // 그린 그림을 저장하고 있을 객체.
-    QImage image;
+    void drawStroke(QPainter &painter, const Stroke& stroke);
+
+    QList<Stroke> strokes; // 지금까지 그린 모든 획들을 가지고 있음.
+    Stroke currentStroke;
+    bool drawing;
 
 
-    // 선 그으려면 전의 위치를 알고 있어야 함.
-    // mouseMoveEvent가 호출 하면서 그림이 그려지는데, 이 함수가 충분히 자주 호출이 안 돼서
-    // 이전 위치 없이 그냥 그으면, 선이 끊김.
-    QPoint lastPoint;
-
-
+    QColor penColor;
     Tool currentTool;
     int penSize;
     int eraserSize;
-
 };
 
 #endif // CANVAS_H

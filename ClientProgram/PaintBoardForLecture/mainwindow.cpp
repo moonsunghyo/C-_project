@@ -7,19 +7,29 @@
 
 #include <QMenuBar>
 #include <QInputDialog>
-
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QColorDialog>
 
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent),ui(new Ui::MainWindow), canvas(nullptr)
+    : QMainWindow(parent),ui(new Ui::MainWindow), canvas(nullptr), currentColor(Qt::black)
 {
     // design 탭에서 배치한 위젯들을 실제로 this에 생성 배치.
     ui->setupUi(this);
+
+    ui->penSlider->setRange(1, 50);
+    ui->penSlider->setValue(2);
+    ui->penSizeEdit->setText("2");
+
 
     // .ui에서 만든 액션 이름으로 연결
     connect(ui->actionNew_Canvas, &QAction::triggered, this, &MainWindow::onNewCanvas);
     connect(ui->actionPen, &QAction::triggered, this, &MainWindow::onPen);
     connect(ui->actionEraser, &QAction::triggered, this, &MainWindow::onEraser);
+    connect(ui->penSlider,  &QSlider::valueChanged, this, &MainWindow::onPenSliderChanged);
+    connect(ui->penSizeEdit, &QLineEdit::editingFinished, this, &MainWindow::onPenSizeEditChanged);
+    connect(ui->colorPickerButton, &QPushButton::clicked, this, &MainWindow::onColorPicker);
 }
 
 MainWindow::~MainWindow() {
@@ -34,18 +44,18 @@ void MainWindow::onNewCanvas() {
 
     if (!ok1 || !ok2) return;
 
-    canvas = new Canvas(w, h, this);
-/*
-[ MenuBar ]
-[ ToolBar ]
-[-------------------]
-[   CentralWidget   ]
-[-------------------]
-[ StatusBar ]
-의 형태로 QMainWindow는 구성되는데, CentralWidget에 canvas 객체를 넣는다.
-하나만 들어가기 때문에 여러번 호출하면, 전에 있던 객체는 지워진다.
-*/
-    setCentralWidget(canvas);
+    if (canvas) {
+        delete canvas;
+        canvas = nullptr;
+    }
+
+    canvas = new Canvas(w, h, ui->canvasContainer);
+
+    canvas->move(0, 0); // 명시적으로 위치 지정 (생략하면 기본값 (0,0))
+    canvas->show();
+
+    canvas->setPenColor(currentColor);
+    canvas->setPenSize(ui->penSlider->value());
 }
 
 void MainWindow::onPen()
@@ -57,3 +67,44 @@ void MainWindow::onEraser()
 {
     if (canvas) canvas->setTool(Canvas::Tool::Eraser);
 }
+
+
+void MainWindow::onPenSliderChanged(int value)
+{
+    ui->penSizeEdit->setText(QString::number(value));
+    if (canvas) canvas->setPenSize(value);
+}
+
+void MainWindow::onPenSizeEditChanged()
+{
+    bool ok;
+    int value = ui->penSizeEdit->text().toInt(&ok); //완전히 입력이 됐는지를 포인터로 받고, 바뀐 값을 반환 한다.
+    if (!ok || value < 1 || value > 50) {
+        ui->penSizeEdit->setText(QString::number(ui->penSlider->value()));
+        return;
+    }
+    ui->penSlider->setValue(value);
+    if (canvas) canvas->setPenSize(value);
+}
+
+
+
+void MainWindow::onColorPicker()
+{
+    QColor color = QColorDialog::getColor(currentColor, this, "색상 선택");
+    if (color.isValid()) {
+        currentColor = color;
+        ui->colorPickerButton->setStyleSheet(
+            QString("background-color: %1; border: 1px solid #888;").arg(color.name()));
+        if (canvas) canvas->setPenColor(currentColor);
+    }
+}
+
+
+
+
+
+
+
+
+
