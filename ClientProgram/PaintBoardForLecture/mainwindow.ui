@@ -172,7 +172,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>18</height>
+     <height>26</height>
     </rect>
    </property>
    <property name="palette">
@@ -390,7 +390,14 @@ QMenuBar::item:selected {
     </property>
     <addaction name="actionNew_Canvas"/>
    </widget>
+   <widget class="QMenu" name="menuNetwork">
+    <property name="title">
+     <string>Network</string>
+    </property>
+    <addaction name="actionConnet_to_Server"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuNetwork"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <widget class="QToolBar" name="toolBar">
@@ -425,6 +432,11 @@ QMenuBar::item:selected {
    </property>
    <property name="menuRole">
     <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionConnet_to_Server">
+   <property name="text">
+    <string>Connet to Server</string>
    </property>
   </action>
  </widget>

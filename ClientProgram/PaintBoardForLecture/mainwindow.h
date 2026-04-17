@@ -4,7 +4,11 @@
 #include "canvas.h"
 
 #include <QMainWindow>
-#include <QColor>
+
+class QWidget;
+class QColor;
+class QTcpSocket;
+class QByteArray;
 
 QT_BEGIN_NAMESPACE
 // ui_mainwindow.h 안에 선언될 클래스 전방 선언.
@@ -20,12 +24,20 @@ public:
     ~MainWindow() override;
 
 private slots:
-    void onNewCanvas();
-    void onPen();
-    void onEraser();
-    void onColorPicker();
+    void onNewCanvas();                     // 새 캠버스 눌렀을 때
+    void onPen();                           // 펜 눌렀을 때
+    void onEraser();                       // 지우개 눌렀을 때
+    void onColorPicker();                  // 색 고르는 버튼 눌렀을 때.
     void onPenSliderChanged(int value);   // 슬라이더 변경 시
     void onPenSizeEditChanged();          // 텍스트 입력 변경 시
+
+    // 서버 관련
+    void onConnectToServer();           // 서버랑 연결 할 때
+    void onSocketReadyRead();           // 서버에서 데이터를 받을 때
+    void onSocketDisconnected();        // 서버랑 연결이 끊겼을 때
+
+    void sendStroke(const Stroke& stroke);      // 서버에 한 획 보내기
+    void sendErase(int strokeId);               // 지운 획 id 보내기
 
 
 private:
@@ -39,6 +51,11 @@ private:
 
     //윈도우에 띄울 canvas 객체
     Canvas* canvas;
-    QColor currentColor;
+    QColor currentColor;        // 지금 골라진 색.
+
+
+    // 서버 관련
+    QTcpSocket* tcpSocket;      // tcp 통신 도와줄 객체
+    QByteArray  receiveBuffer; // 수신 받은 직렬화 데이터 저장한 객체
 };
 #endif // MAINWINDOW_H

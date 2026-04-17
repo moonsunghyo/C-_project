@@ -3,17 +3,17 @@
 
 // gui 컴포넌트 기본 클래스 헤더.
 #include <QWidget>
-// 이미지 저장할 수 있는 클래스 헤더.
-#include <QImage>
-// 좌표 저장용 클래스 헤더.
-#include <QPoint>
-// 색 저장하는 클래스 헤더
-#include <QColor>
+
+class QPainter;
+class QMouseEvent;
+class QPaintEvent;
 
 struct Stroke {
     QList<QPoint> points; // 한 획을 저장할 리스트.
     QColor color;
     int size;
+    qint64 id = -1;
+
 };
 
 class Canvas : public QWidget
@@ -33,7 +33,14 @@ public:
     void setEraserSize(int size);
     void setPenColor(const QColor& color);
 
-protected:
+
+    // 서버에서 받은 Stroke 받기
+    void onStrokeReceived(const Stroke& stroke);
+    // 서버에서 받은 무슨 Stroke 지웠는지를 받기
+    void onEraseReceived(int strokeId);
+
+private slots: //시그널이랑 연결될 수 있는 함수들이라는 범위 지정자, slots를 쓰면 자동으로 시그널과 연결 해 주는 등의 기능 제공.
+
     //화면 다시 그릴 때 호출되는 함수.
     //update가 호출되거나, 화면이 가려졌었다거나 할 때가 다시 그림.
     void paintEvent(QPaintEvent *event) override;
@@ -47,8 +54,14 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
 
 
+
+signals:
+    void strokeFinished(const Stroke& stroke);  // 한 획을 다 그렸을 때를 다른 객체에 알려주기 위한 시그널.
+    void eraseRequested(int strokeId); // 한 획을 지웠을 때 다른 객체에 알려주기 위한 시그널.
+
+
 private:
-    void drawStroke(QPainter &painter, const Stroke& stroke);
+    void drawStroke(QPainter &painter, const Stroke& stroke);   //획을 그리는 함수.
 
     QList<Stroke> strokes; // 지금까지 그린 모든 획들을 가지고 있음.
     Stroke currentStroke;
