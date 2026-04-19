@@ -1,109 +1,95 @@
+// src/pages/LandingPage.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Box } from 'lucide-react';
+import SplitLeft from '../components/SplitLeft';
+import { Ico } from '../components/Icons';
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [sessionCode, setSessionCode] = useState('');
+  const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [touch, setTouch] = useState({});
+
+  const errs = {};
+  if (touch.code && code.length < 4) errs.code = '세션 코드를 4자 이상 입력해주세요';
+  if (touch.name && !name.trim())    errs.name = '이름을 입력해주세요';
 
   const handleJoin = (e) => {
     e.preventDefault();
-    if (sessionCode.trim().length >= 4 && name.trim()) {
-      sessionStorage.setItem('adp_sessionCode', sessionCode.toUpperCase());
+    setTouch({ code: true, name: true });
+    if (code.length >= 4 && name.trim()) {
+      sessionStorage.setItem('adp_sessionCode', code);
       sessionStorage.setItem('adp_name', name);
       navigate('/canvas');
     }
   };
 
-  const handleCreateHost = () => {
-    alert('구현 예정');
-  };
-
   return (
-    <div className="split-layout">
-      {/* Mobile Top Bar */}
-      <div className="mobile-nav">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
-          <Box size={24} />
-          C-Project
-        </div>
-      </div>
+    <div className="split enter">
+      <SplitLeft
+        tag="참가자 입장"
+        headline="강의실을<br/><span>연결하는</span><br/>화이트보드"
+        desc="강사가 개설한 보드에 세션 코드 하나로 즉시 접속. 실시간 드로잉을 함께 확인하세요."
+      />
 
-      {/* Left Branding Panel */}
-      <div className="split-left">
-        <div className="left-pattern-overlay" />
-        <div className="left-content">
-          <div className="brand-title">
-            <Box size={32} />
-            C-Project
-          </div>
-        </div>
-
-        <div className="left-content">
-          <h2 style={{ fontSize: '3rem', fontWeight: 700, lineHeight: 1.1, marginBottom: '1.5rem', letterSpacing: '-0.03em', color: '#333333ff' }}>
-            실시간 화이트보드 협업 플랫폼
-          </h2>
-          <p className="brand-desc" style={{ color: '#4d5053ff' }}>
-            강사가 개설한 보드에 접속하여, 대화형 학습과 양방향 커뮤니케이션을 시작하세요. 언제 어디서나 빠르게 아이디어를 공유할 수 있습니다.
-          </p>
-        </div>
-
-        <div className="left-content" style={{ fontSize: '0.85rem', color: 'rgba(0, 0, 0, 0.5)' }}>
-          &copy; 2026 C-Project for Advanced Programming.
-        </div>
-      </div>
-
-      {/* Right Form Panel */}
       <div className="split-right">
-        <div className="form-container">
-          <div className="form-header">
-            <h2>세션 참가하기</h2>
-            <p>공유받은 세션 코드와 사용할 이름을 입력해주세요.</p>
-          </div>
+        <div className="form-box">
+          <p className="eyebrow">참가자</p>
+          <h1 className="form-title">세션 참가하기</h1>
+          <p className="form-sub">
+            공유받은 세션 코드와 이름을 입력해 바로 참가할 수 있어요.
+          </p>
 
-          <form onSubmit={handleJoin}>
-            <div className="input-group">
-              <label className="input-label" htmlFor="sessionCode">세션 코드</label>
+          <form onSubmit={handleJoin} noValidate>
+            <div className="field">
+              <label className="flabel" htmlFor="sessionCode">세션 코드</label>
               <input
                 id="sessionCode"
                 type="text"
-                placeholder="예: AB12CD"
-                value={sessionCode}
-                onChange={(e) => setSessionCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
-                className="saas-input"
+                className={`finput code-input${errs.code ? ' err' : ''}`}
+                placeholder="AB12CD"
+                value={code}
                 maxLength={6}
                 autoFocus
+                onChange={(e) =>
+                  setCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())
+                }
+                onBlur={() => setTouch((t) => ({ ...t, code: true }))}
               />
+              {errs.code && <div className="ferror">⚠ {errs.code}</div>}
             </div>
 
-            <div className="input-group">
-              <label className="input-label" htmlFor="name">참가자 이름</label>
+            <div className="field">
+              <label className="flabel" htmlFor="pname">참가자 이름</label>
               <input
-                id="name"
+                id="pname"
                 type="text"
+                className={`finput${errs.name ? ' err' : ''}`}
                 placeholder="홍길동"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="saas-input"
                 maxLength={15}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={() => setTouch((t) => ({ ...t, name: true }))}
               />
+              {errs.name && <div className="ferror">⚠ {errs.name}</div>}
             </div>
 
             <button
               type="submit"
-              className="saas-btn"
-              disabled={sessionCode.trim().length === 0 || name.trim().length === 0}
+              className="btn-p"
+              disabled={!code || !name}
             >
-              참가하기
-              <ArrowRight size={18} />
+              세션 참가하기 <Ico.Arrow s={15} />
             </button>
           </form>
 
           <div className="divider">또는</div>
 
-          <button onClick={handleCreateHost} className="secondary-btn">
-            강사로 세션 만들기
+          <button
+            className="btn-s"
+            onClick={() => navigate('/instructor')}
+          >
+            <Ico.Box s={14} /> 강사로 세션 만들기
           </button>
         </div>
       </div>

@@ -1,50 +1,60 @@
-import React, { useEffect, useRef, useState } from 'react';
+// src/pages/CanvasPage.jsx
+// Student canvas — receives drawing data from the instructor via WebSocket.
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import BrandIcon from '../components/BrandIcon';
+import { Ico } from '../components/Icons';
+
+const WS_URL = 'ws://localhost:8082';
 
 export default function CanvasPage() {
+  const navigate = useNavigate();
   const canvasRef = useRef(null);
-  const [infoText, setInfoText] = useState("서버 연결 대기 중...");
+  const [connState, setConnState] = useState('waiting'); // 'waiting' | 'connected' | 'error'
+  const [info, setInfo] = useState('서버 연결 대기 중...');
+
+  const sessionCode = sessionStorage.getItem('adp_sessionCode') || '------';
+  const participantName = sessionStorage.getItem('adp_name') || '참가자';
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    let lastX = null;
-    let lastY = null;
-    let lastTime = Date.now();
 
+    const ctx = canvas.getContext('2d');
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
-    const socket = new WebSocket('ws://localhost:8082');
+    let lastX = null;
+    let lastY = null;
+    let lastTime = Date.now();
+
+    const socket = new WebSocket(WS_URL);
 
     socket.onopen = () => {
-      setInfoText("🟢 서버 연결 성공! 데이터를 기다리는 중...");
-      console.log("Connected to Java WebSocket Server");
+      setConnState('connected');
+      setInfo('연결됨. 데이터를 기다리는 중...');
     };
 
     socket.onmessage = (event) => {
       const data = event.data.split(',');
       const relX = parseFloat(data[0]);
       const relY = parseFloat(data[1]);
-      const colorIdx = parseInt(data[2]);
+      const colorIdx = parseInt(data[2], 10);
 
       const x = relX * canvas.width;
       const y = relY * canvas.height;
 
-      // 0.1초(100ms) 이상 데이터가 끊겼다가 다시 오면 '새로운 선'으로 인식함
-      const currentTime = Date.now();
-      if (currentTime - lastTime > 100) {
+      // Gap > 100 ms → new stroke
+      const now = Date.now();
+      if (now - lastTime > 100) {
         lastX = null;
         lastY = null;
       }
-      lastTime = currentTime;
+      lastTime = now;
 
-      // 색상 선택
-      ctx.strokeStyle = (colorIdx === 0) ? "black" : "red";
+      ctx.strokeStyle = colorIdx === 0 ? '#1a1a2e' : '#6366f1';
 
-      // 핵심 수정: 점이 아닌 선 긋기
       if (lastX !== null && lastY !== null) {
         ctx.beginPath();
         ctx.moveTo(lastX, lastY);
@@ -59,17 +69,17 @@ export default function CanvasPage() {
 
       lastX = x;
       lastY = y;
-
-      setInfoText(`수신 중: X(${x.toFixed(1)}), Y(${y.toFixed(1)})`);
+      setInfo(`수신 중: X(${x.toFixed(1)}), Y(${y.toFixed(1)})`);
     };
 
-    socket.onerror = (error) => {
-      setInfoText("🔴 연결 에러 발생!");
-      console.error(error);
+    socket.onerror = () => {
+      setConnState('error');
+      setInfo('연결 오류가 발생했습니다.');
     };
 
     socket.onclose = () => {
-      setInfoText("⚪ 서버와 연결이 끊겼습니다.");
+      setConnState('waiting');
+      setInfo('서버와 연결이 끊겼습니다.');
     };
 
     return () => {
@@ -77,35 +87,52 @@ export default function CanvasPage() {
     };
   }, []);
 
+  const statusMap = {
+    waiting:   { cls: 'sb-wait', label: '연결 대기 중', pulse: true },
+    connected: { cls: 'sb-live', label: '연결됨',       pulse: false },
+    error:     { cls: 'sb-err',  label: '연결 오류',    pulse: false },
+  };
+  const st = statusMap[connState];
+
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      background: '#2c3e50',
-      color: 'white',
-      fontFamily: 'sans-serif',
-      minHeight: '100vh',
-      paddingTop: '20px'
-    }}>
-      <h1>실시간 캔버스 (교수님 화면)</h1>
-      <canvas 
-        ref={canvasRef} 
-        width="800" 
-        height="600"
-        style={{
-          background: 'white',
-          border: '5px solid #34495e',
-          cursor: 'default',
-          boxShadow: '0 10px 20px rgba(0, 0, 0, 0.5)'
-        }}
-      ></canvas>
-      <div style={{
-        marginTop: '15px',
-        fontSize: '1.2em',
-        color: '#ecf0f1'
-      }}>
-        {infoText}
+    <div className="scanvas-page enter">
+      {/* Header */}
+      <div className="scanvas-nav">
+        <BrandIcon size={24} />
+        <div style={{ width: 1, height: 20, background: 'var(--dark-border)', margin: '0 .2rem' }} />
+        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: '.8rem', letterSpacing: '.1em', color: 'var(--dark-fg-2)' }}>
+          {sessionCode}
+        </span>
+        <div className={`status-badge ${st.cls}`}>
+          <div className={`status-dot${st.pulse ? ' pulse' : ''}`} />
+          &nbsp;{st.label}
+        </div>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: '.8rem', color: 'var(--dark-fg-2)', marginRight: '.5rem' }}>
+          {participantName}
+        </span>
+        <button
+          className="btn-sm secondary"
+          style={{ fontSize: '.78rem' }}
+          onClick={() => navigate('/')}
+        >
+          ← 나가기
+        </button>
+      </div>
+
+      {/* Canvas */}
+      <div className="scanvas-body">
+        <div className="scanvas-frame">
+          <canvas
+            ref={canvasRef}
+            width={820}
+            height={615}
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
+        <div className="scanvas-info">
+          <Ico.Wifi s={12} /> {info}
+        </div>
       </div>
     </div>
   );
