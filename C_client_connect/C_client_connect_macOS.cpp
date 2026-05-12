@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <cstdint>
 
+// 좌표는 0~1의 상대좌표로, 색, 지우개 등의 정보는 int로 보내기 위해서 바이트 단위 전송 함수 구현
 // float을 Big-Endian 4바이트로 변환 (Java readFloat() 호환)
 void sendFloat(int sock, float value) {
     uint32_t tmp;
