@@ -170,8 +170,8 @@ void MainWindow::sendStroke(const Stroke& stroke) {
     ds << (qint32)stroke.color.rgba(); // ARGB int
     ds << (qint32)stroke.size;
     for (const QPoint& p : stroke.points) {
-        ds << (float)p.x();
-        ds << (float)p.y();
+        ds << (float)p.x() / canvas->width();
+        ds << (float)p.y() / canvas->height();
     }
 
     tcpSocket->write(packet);   // 서버로 보내기.
@@ -218,7 +218,7 @@ void MainWindow::onSocketReadyRead() {
             for (int i = 0; i < pointCount; i++) {
                 float x, y;
                 ds >> x >> y;
-                stroke.points.append(QPoint((int)x, (int)y));
+                stroke.points.append(QPoint((int) x , (int)y));
             }
 
             receiveBuffer.remove(0, totalSize); // 읽은 부분 지우기.
