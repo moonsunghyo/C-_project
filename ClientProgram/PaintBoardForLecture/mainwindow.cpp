@@ -223,7 +223,11 @@ void MainWindow::onSocketReadyRead() {
             for (int i = 0; i < pointCount; i++) {
                 float x, y;
                 ds >> x >> y;
-                stroke.points.append(QPoint((int) x , (int)y));
+
+                float normalizedX = static_cast<float>(x) * static_cast<float>(canvas->width());
+                float normalizedY = static_cast<float>(y) * static_cast<float>(canvas->height());
+
+                stroke.points.append(QPoint((int) normalizedX , (int)normalizedY));
             }
 
             receiveBuffer.remove(0, totalSize); // 읽은 부분 지우기.
