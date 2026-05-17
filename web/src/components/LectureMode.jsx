@@ -123,16 +123,27 @@ export default function LectureMode({
     return () => ws.removeEventListener('message', onMessage);
   }, [wsRef, wsStatus, currentPage]);
 
-  // 페이지가 바뀌면 서버에 현재 페이지 번호 송신 (type=3).
-  // PDF 로드 전이거나 ws가 안 열렸으면 자동으로 안 보냄(safeSend).
-  // wsStatus를 dep에 넣어, 끊겼다 재연결되면 다시 현재 페이지를 알려준다.
+  // 페이지가 "실제로 바뀐 경우"에만 서버에 현재 페이지 번호 송신 (type=3).
+  // - 첫 진입(=PDF 로드 직후) 시점에는 보내지 않고 baseline만 기록.
+  // - 사용자가 다른 페이지로 이동한 경우에만 송신.
+  // - 송신 실패(ws not open)면 baseline을 유지해서, 다음 트리거(예: ws 재연결)에 자동 재시도.
+  const lastSentPageRef = useRef(null);
   useEffect(() => {
     if (!pageCount) return;
+
+    if (lastSentPageRef.current === null) {
+      // 첫 effect 실행 — 초기 페이지(보통 1)는 송신하지 않고 baseline만 기록
+      lastSentPageRef.current = currentPage;
+      return;
+    }
+    if (lastSentPageRef.current === currentPage) return; // 변경 없음
+
     const ok = safeSend(wsRef?.current, encodePage(currentPage));
     console.log(
       '[ws] page send:',
       ok ? `ok (page=${currentPage})` : 'ws not open'
     );
+    if (ok) lastSentPageRef.current = currentPage;
   }, [currentPage, pageCount, wsStatus, wsRef]);
 
   const showToast = (msg) => {
