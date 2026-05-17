@@ -15,7 +15,7 @@ import {
   safeSend,
 } from '../lib/protocol.js';
 
-const PEN_COLOR = '#E03E00';
+const DEFAULT_PEN_COLOR = '#E03E00';
 
 export default function LectureMode({
   pdfData,
@@ -39,6 +39,7 @@ export default function LectureMode({
 
   const [tool, setTool] = useState('pen');
   const [thickness, setThickness] = useState(3);
+  const [penColor, setPenColor] = useState(DEFAULT_PEN_COLOR);
 
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState(null);
@@ -314,7 +315,7 @@ export default function LectureMode({
               onStrokesChange={handleStrokesChange}
               onEraseStroke={handleEraseStroke}
               tool={tool}
-              penColor={PEN_COLOR}
+              penColor={penColor}
               thickness={thickness}
             />
           )}
@@ -327,6 +328,8 @@ export default function LectureMode({
               setTool={setTool}
               thickness={thickness}
               setThickness={setThickness}
+              penColor={penColor}
+              setPenColor={setPenColor}
               canUndo={canUndo}
               canRedo={canRedo}
               onUndo={undo}
