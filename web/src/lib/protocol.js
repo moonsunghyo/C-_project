@@ -4,13 +4,15 @@
 //
 //   펜    : int32(0) | int64 strokeId | int32 pointCount | int32 color | int32 size | (float32 x, float32 y) × N
 //   지우개 : int32(1) | int64 strokeId
-//   PDF   : int32(2) | int32 byteLength | bytes × byteLength   (웹 전용 확장)
+//   PDF   : int32(2) | int32 byteLength | bytes × byteLength   (웹 전용)
+//   페이지 : int32(3) | int32 pageNum                            (웹 전용, 1 ~ n)
 //
 // 좌표 (x, y)는 0~1 normalized (PageStage 내부 표현 그대로).
 
 export const MSG_PEN = 0;
 export const MSG_ERASE = 1;
 export const MSG_PDF = 2;
+export const MSG_PAGE = 3;
 
 // "#RRGGBB" 또는 "#RRGGBBAA" → int32 (0xAARRGGBB 형태로 통일)
 export function colorToInt(hex) {
@@ -98,6 +100,15 @@ export function decodeMessage(arrayBuffer) {
     return { type: 'erase', id };
   }
   return null;
+}
+
+// 페이지 번호 송신: int32(3) | int32 pageNum
+export function encodePage(pageNum) {
+  const buf = new ArrayBuffer(8);
+  const v = new DataView(buf);
+  v.setInt32(0, MSG_PAGE, false);
+  v.setInt32(4, pageNum | 0, false);
+  return buf;
 }
 
 export function encodePdf(uint8) {

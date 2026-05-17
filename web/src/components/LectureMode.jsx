@@ -9,6 +9,7 @@ import {
   colorToInt,
   decodeMessage,
   encodeErase,
+  encodePage,
   encodePen,
   intToColor,
   safeSend,
@@ -121,6 +122,18 @@ export default function LectureMode({
     ws.addEventListener('message', onMessage);
     return () => ws.removeEventListener('message', onMessage);
   }, [wsRef, wsStatus, currentPage]);
+
+  // 페이지가 바뀌면 서버에 현재 페이지 번호 송신 (type=3).
+  // PDF 로드 전이거나 ws가 안 열렸으면 자동으로 안 보냄(safeSend).
+  // wsStatus를 dep에 넣어, 끊겼다 재연결되면 다시 현재 페이지를 알려준다.
+  useEffect(() => {
+    if (!pageCount) return;
+    const ok = safeSend(wsRef?.current, encodePage(currentPage));
+    console.log(
+      '[ws] page send:',
+      ok ? `ok (page=${currentPage})` : 'ws not open'
+    );
+  }, [currentPage, pageCount, wsStatus, wsRef]);
 
   const showToast = (msg) => {
     setToast(msg);

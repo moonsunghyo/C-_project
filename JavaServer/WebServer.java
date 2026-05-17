@@ -13,6 +13,7 @@ public class WebServer extends WebSocketServer {
     private static final int MSG_PEN   = 0;
     private static final int MSG_ERASE = 1;
     private static final int MSG_PDF   = 2;
+    private static final int MSG_PAGE  = 3;  // 웹 전용: 페이지 번호
 
     public WebServer(int port) {
         super(new InetSocketAddress(port));
@@ -33,12 +34,13 @@ public class WebServer extends WebSocketServer {
         // 텍스트 프레임은 지금 사용 안 함.
     }
 
-    // ★ 바이너리 프레임 — 웹에서 보내는 펜/지우개/PDF가 모두 여기로 들어온다.
+    // ★ 바이너리 프레임 — 웹에서 보내는 펜/지우개/PDF/페이지가 모두 여기로 들어온다.
     // C++ Qt 클라이언트(TCP)와 동일한 포맷.
     // 포맷(BigEndian):
     //   펜    : int32(0) | int64 strokeId | int32 N | int32 color | int32 size | (float32 x, float32 y) × N
     //   지우개 : int32(1) | int64 strokeId
     //   PDF   : int32(2) | int32 length | bytes × length   (웹 전용)
+    //   페이지 : int32(3) | int32 pageNum                    (웹 전용, 1 ~ n)
     @Override
     public void onMessage(WebSocket conn, ByteBuffer message) {
     	message.order(ByteOrder.BIG_ENDIAN);
@@ -77,6 +79,11 @@ public class WebServer extends WebSocketServer {
                     int len = message.getInt();
                     System.out.printf("📄 [웹] PDF length=%dB (payload remaining=%dB)%n",
                         len, message.remaining());
+                    break;
+                }
+                case MSG_PAGE: {
+                    int page = message.getInt();
+                    System.out.printf("📖 [웹] PAGE page=%d%n", page);
                     break;
                 }
                 default:
