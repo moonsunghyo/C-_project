@@ -58,7 +58,7 @@ private slots: //시그널이랑 연결될 수 있는 함수들이라는 범위 
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
-
+    void resizeEvent(QResizeEvent *event) override;
 signals:
     void strokeFinished(const Stroke& stroke);  // 한 획을 다 그렸을 때를 다른 객체에 알려주기 위한 시그널.
     void eraseRequested(qint64 strokeId); // 한 획을 지웠을 때 다른 객체에 알려주기 위한 시그널.

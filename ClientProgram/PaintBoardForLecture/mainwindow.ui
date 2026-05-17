@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1154</width>
+    <height>728</height>
    </rect>
   </property>
   <property name="palette">
@@ -110,8 +110,8 @@
      <rect>
       <x>-1</x>
       <y>-1</y>
-      <width>801</width>
-      <height>541</height>
+      <width>1151</width>
+      <height>641</height>
      </rect>
     </property>
     <layout class="QHBoxLayout" name="horizontalLayout" stretch="8,2">
@@ -171,7 +171,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
+     <width>1154</width>
      <height>26</height>
     </rect>
    </property>

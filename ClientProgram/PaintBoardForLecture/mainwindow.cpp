@@ -20,7 +20,8 @@ MainWindow::MainWindow(QWidget *parent)
     // design 탭에서 배치한 위젯들을 실제로 this에 생성 배치.
     ui->setupUi(this);
     menuBar()->setNativeMenuBar(false);
-
+    // 서버 연결 시 좌측 컨테이너가 쪼그라들지 않도록 원래 크기(최소 가로 약 800 이상)를 보장합니다.
+    ui->canvasContainer->setMinimumSize(800, 600);
     ui->penSlider->setRange(1, 50);
     ui->penSlider->setValue(2);
     ui->penSizeEdit->setText("2");
@@ -60,12 +61,20 @@ MainWindow::~MainWindow() {
 // **********************************************************
 
 void MainWindow::onNewCanvas() {
-    int w = 800;
-    int h = 600;
+    int w = 8000;
+    int h = 6000;
 
+    // 캔버스를 생성하고 배치하는 함수 내부 (예: onNewCanvas 또는 PDF 수신부)
     if (canvas) {
-        delete canvas;
-        canvas = nullptr;
+        // 1. canvasContainer에 레이아웃이 없다면 QVBoxLayout을 하나 붙여줍니다.
+        if (!ui->canvasContainer->layout()) {
+            QVBoxLayout *layout = new QVBoxLayout(ui->canvasContainer);
+            layout->setContentsMargins(0, 0, 0, 0);
+            ui->canvasContainer->setLayout(layout);
+        }
+
+        // 2. 레이아웃에 캔버스를 추가합니다.
+        ui->canvasContainer->layout()->addWidget(canvas);
     }
 
     canvas = new Canvas(w, h, ui->canvasContainer);
@@ -195,54 +204,100 @@ void MainWindow::sendErase(qint64 strokeId) {
 }
 
 void MainWindow::onSocketReadyRead() {
-    receiveBuffer.append(tcpSocket->readAll()); // 소켓에서 받은 데이터 전부 붙여넣기.
+    // 소켓에 들어온 데이터를 누적 버퍼에 추가
+    receiveBuffer.append(tcpSocket->readAll());
+
+    // QDataStream은 루프 바깥에서 딱 한 번만 선언 (매우 중요!)
+    QDataStream ds(&receiveBuffer, QIODevice::ReadOnly);
+    ds.setByteOrder(QDataStream::BigEndian);
+    ds.setFloatingPointPrecision(QDataStream::SinglePrecision);
 
     while (true) {
-        if (receiveBuffer.size() < 4) break; // type 읽을 수 없음
-
-        QDataStream ds(receiveBuffer);
-        ds.setByteOrder(QDataStream::BigEndian);
+        if (ds.device()->bytesAvailable() < 4) break;
 
         qint32 type;
-        ds >> type;
+        ds >> type; // type 소비
 
         if (type == 0) {
-            // Stroke: type(4) + id(8) + pointCount(4) + color(4) + size(4) = 24바이트
-            if (receiveBuffer.size() < 24) break;
-            qint64 id;
-            qint32 pointCount, color, size;
-            ds >> id >> pointCount >> color >> size;
+            // 나머지: id(8) + pointCount(4) + color(4) + size(4) = 20바이트
+            if (ds.device()->bytesAvailable() < 20) break;
 
-            int totalSize = 24 + pointCount * 8;
-            if (receiveBuffer.size() < totalSize) break;
+            char headerBuf[20];
+            ds.device()->peek(headerBuf, 20);
+            qint32 pointCount;
+            memcpy(&pointCount, &headerBuf[8], sizeof(qint32)); // id(8) 다음
+            pointCount = qFromBigEndian(pointCount);
+
+            if (ds.device()->bytesAvailable() < 20 + pointCount * 8) break;
+
+            qint64 id;
+            qint32 actualPointCount, color, size;
+            ds >> id >> actualPointCount >> color >> size;
 
             Stroke stroke;
             stroke.id    = id;
-            stroke.color = QColor::fromRgba((QRgb)color);   // 정수형 색 표현은 QColor로 변환.
+            stroke.color = QColor::fromRgba((QRgb)color);
             stroke.size  = size;
-            for (int i = 0; i < pointCount; i++) {
+            for (int i = 0; i < actualPointCount; i++) {
                 float x, y;
                 ds >> x >> y;
-
-                float normalizedX = static_cast<float>(x) * static_cast<float>(canvas->width());
-                float normalizedY = static_cast<float>(y) * static_cast<float>(canvas->height());
-
-                stroke.points.append(QPoint((int) normalizedX , (int)normalizedY));
+                stroke.points.append(QPoint(
+                    static_cast<int>(x * canvas->width()),
+                    static_cast<int>(y * canvas->height())
+                    ));
             }
 
-            receiveBuffer.remove(0, totalSize); // 읽은 부분 지우기.
+            receiveBuffer.remove(0, 24 + pointCount * 8);
             if (canvas) canvas->onStrokeReceived(stroke);
 
         } else if (type == 1) {
-            // Erase: type(4) + strokeId(8) = 8바이트
-            if (receiveBuffer.size() < 12) break;
+            // 나머지: strokeId(8)
+            if (ds.device()->bytesAvailable() < 8) break;
+
             qint64 strokeId;
             ds >> strokeId;
+
             receiveBuffer.remove(0, 12);
             if (canvas) canvas->onEraseReceived(strokeId);
 
+        } else if (type == 2) {
+        // 나머지: length(4) + pdfData(length)
+        if (ds.device()->bytesAvailable() < 4) break;
+
+        char lenBuf[4];
+        ds.device()->peek(lenBuf, 4);
+        qint32 pdfLength;
+        memcpy(&pdfLength, lenBuf, 4);
+        pdfLength = qFromBigEndian(pdfLength);
+
+        if (ds.device()->bytesAvailable() < 4 + pdfLength) break;
+
+        qint32 dummyLength;
+        ds >> dummyLength;
+        QByteArray pdfData(pdfLength, 0);
+        qDebug() << "PDF 헤더 확인:" << pdfData.left(5);
+        ds.readRawData(pdfData.data(), pdfLength);
+
+        receiveBuffer.remove(0, 8 + pdfLength);
+
+        // ✨ [수정된 부분] 캔버스가 없으면 서버에서 준 PDF를 그릴 공간을 먼저 만듭니다.
+        if (!canvas) {
+            onNewCanvas();
+        }
+
+        if (canvas) canvas->onPdfReceived(pdfData);
+
+    } else if (type == 3) {
+            // 나머지: pageIndex(4)
+            if (ds.device()->bytesAvailable() < 4) break;
+
+            qint32 pageIndex;
+            ds >> pageIndex;
+
+            receiveBuffer.remove(0, 8);
+            if (canvas) canvas->onPageIndexReceived((int)pageIndex);
+
         } else {
-            // 알 수 없는 타입 — 버퍼 초기화 (오류 방어)
             receiveBuffer.clear();
             break;
         }
