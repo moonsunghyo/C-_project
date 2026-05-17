@@ -76,9 +76,12 @@ public class WebServer extends WebSocketServer {
                     break;
                 }
                 case MSG_PDF: {
-                    int len = message.getInt();
-                    System.out.printf("📄 [웹] PDF length=%dB (payload remaining=%dB)%n",
-                        len, message.remaining());
+                	int len = message.getInt();
+                    
+                    // ✨ 핵심 로직: 나중에 들어온 사람을 위해 서버 메모리에 저장! ✨
+                    MainServer.currentPDFPacket = packet; 
+                    
+                    System.out.printf("📄 [웹->서버저장] PDF 저장 완료! length=%dB (C++ 전송 준비 완료)%n", len);
                     break;
                 }
                 case MSG_PAGE: {
@@ -93,6 +96,7 @@ public class WebServer extends WebSocketServer {
             for (ClientHandler client : MainServer.clients) {
                 client.sendData(packet); 
             }
+            
         } catch (Exception e) {
             System.out.println("⚠️ [웹] 파싱 실패: " + e.getMessage());
         }
