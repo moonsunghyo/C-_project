@@ -41,7 +41,11 @@ public class WebServer extends WebSocketServer {
     //   PDF   : int32(2) | int32 length | bytes × length   (웹 전용)
     @Override
     public void onMessage(WebSocket conn, ByteBuffer message) {
-        message.order(ByteOrder.BIG_ENDIAN);
+    	message.order(ByteOrder.BIG_ENDIAN);
+        byte[] packet = new byte[message.remaining()];
+        message.mark(); // 현재 위치 기억
+        message.get(packet); // 바이트 배열로 복사
+        message.reset(); // 다시 처음으로 되돌림 (아래 switch 문에서 읽어야 하니까요)
         if (message.remaining() < 4) {
             System.out.println("⚠️ [웹] 너무 짧은 메시지 (" + message.remaining() + "B)");
             return;
@@ -77,6 +81,10 @@ public class WebServer extends WebSocketServer {
                 }
                 default:
                     System.out.println("❓ [웹] 알 수 없는 type=" + type);
+            }
+            
+            for (ClientHandler client : MainServer.clients) {
+                client.sendData(packet); 
             }
         } catch (Exception e) {
             System.out.println("⚠️ [웹] 파싱 실패: " + e.getMessage());
