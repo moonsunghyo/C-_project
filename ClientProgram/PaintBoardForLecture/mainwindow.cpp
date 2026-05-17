@@ -19,6 +19,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     // design 탭에서 배치한 위젯들을 실제로 this에 생성 배치.
     ui->setupUi(this);
+    menuBar()->setNativeMenuBar(false);
 
     ui->penSlider->setRange(1, 50);
     ui->penSlider->setValue(2);
@@ -59,11 +60,8 @@ MainWindow::~MainWindow() {
 // **********************************************************
 
 void MainWindow::onNewCanvas() {
-    bool ok1, ok2;
-    int w = QInputDialog::getInt(this, "Width",  "Enter width:",  400, 100, 2000, 1, &ok1);//간단히 사용자한테 숫자 입력 받기
-    int h = QInputDialog::getInt(this, "Height", "Enter height:", 400, 100, 2000, 1, &ok2);
-
-    if (!ok1 || !ok2) return;
+    int w = 800;
+    int h = 600;
 
     if (canvas) {
         delete canvas;
@@ -137,19 +135,19 @@ void MainWindow::onConnectToServer() {
     bool ok;
 
     // 필요 정보 입력받기
-    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "127.0.0.1", &ok);
+    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.2", &ok);
     if (!ok || host.isEmpty()) return;
 
     int port = QInputDialog::getInt(this, "서버 연결", "포트:", 8081, 1, 65535, 1, &ok);
     if (!ok) return;
 
-    QString id = QInputDialog::getText(this, "서버 연결", "이름 (최대 10자):", QLineEdit::Normal, "", &ok);
-    if (!ok || id.isEmpty()) return;
+    QString UserID = QInputDialog::getText(this, "서버 연결", "이름 (최대 10자):", QLineEdit::Normal, "", &ok);
+    if (!ok || UserID.isEmpty()) return;
 
     // 서버에 접속
     tcpSocket->connectToHost(host, (quint16)port);
     if (tcpSocket->waitForConnected(3000)) {
-        QByteArray idBytes = id.toUtf8().left(10).leftJustified(10, ' ', true); // 사용자 id 보내기
+        QByteArray idBytes = UserID.toUtf8().left(10).leftJustified(10, ' ', true); // 사용자 id 보내기
         tcpSocket->write(idBytes);
     } else {
         QMessageBox::warning(this, "연결 실패", "서버에 연결할 수 없어요.");
@@ -160,24 +158,31 @@ void MainWindow::sendStroke(const Stroke& stroke) {
     if (!tcpSocket || tcpSocket->state() != QAbstractSocket::ConnectedState) return;
 
     QByteArray packet;
-    QDataStream ds(&packet, QIODevice::WriteOnly);  //QByteArray에 데이터 쓰는 걸 도와주는 인터페이스
+    QDataStream ds(&packet, QIODevice::WriteOnly);
     ds.setByteOrder(QDataStream::BigEndian);
-
+    ds.setFloatingPointPrecision(QDataStream::SinglePrecision); // 필수 유지
 
     ds << (qint32)0; // type = Stroke
     ds << (qint64)stroke.id;
     ds << (qint32)stroke.points.size();
     ds << (qint32)stroke.color.rgba(); // ARGB int
     ds << (qint32)stroke.size;
+
+    // ✨ 수정한 부분 ✨
     for (const QPoint& p : stroke.points) {
-        ds << (float)p.x() / canvas->width();
-        ds << (float)p.y() / canvas->height();
+        // 계산 결과를 명확하게 float 타입 변수에 할당
+        float normalizedX = static_cast<float>(p.x()) / static_cast<float>(canvas->width());
+        float normalizedY = static_cast<float>(p.y()) / static_cast<float>(canvas->height());
+
+        // 만들어진 float 변수를 그대로 전송
+        ds << normalizedX;
+        ds << normalizedY;
     }
 
-    tcpSocket->write(packet);   // 서버로 보내기.
+    tcpSocket->write(packet);
 }
 
-void MainWindow::sendErase(int strokeId) {
+void MainWindow::sendErase(qint64 strokeId) {
     if (!tcpSocket || tcpSocket->state() != QAbstractSocket::ConnectedState) return;
 
     QByteArray packet;

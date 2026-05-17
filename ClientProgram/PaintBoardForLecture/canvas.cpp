@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QRandomGenerator>
+#include <QBuffer>          // QByteArray를 QIODevice처럼 사용하기 위한 클래스
 
 Canvas::Canvas(int w, int h, QWidget *parent)
     : QWidget(parent),
@@ -9,7 +10,9 @@ Canvas::Canvas(int w, int h, QWidget *parent)
     currentTool(Tool::Pen),
     penSize(2),
     eraserSize(10),
-    penColor(Qt::black)
+    penColor(Qt::black),
+    pdfDocument(new QPdfDocument(this)),    // QPdfDocument 초기화, this를 부모로 설정해 메모리 자동 관리
+    currentPageIndex(0)
 {
     setFixedSize(w, h); // 크기 못 바꿈.
     setAutoFillBackground(true);    // 자동으로 배경은 채워 줌.
@@ -31,8 +34,6 @@ void Canvas::setEraserSize(int size) {eraserSize = size;}
 void Canvas::setPenColor(const QColor& color) {penColor = color;}
 
 
-
-
 //**********************************************************
 //
 //                        slots
@@ -45,6 +46,10 @@ void Canvas::paintEvent(QPaintEvent *event)
     //QPainter : 그린다는 행위 모든 것들을 관장하는 객체.
     QPainter painter(this); //지금 이 객체에
     painter.setRenderHint(QPainter::Antialiasing); // 그릴 때, Antialiasing 적용한 채로 그리기.
+
+    // PDF 배경이 있으면 먼저 그린다
+    if (!backgroundImage.isNull())
+        painter.drawImage(0, 0, backgroundImage);
 
     for (const Stroke &stroke : strokes)    // 현제 모든 획을 다 그린다.
         drawStroke(painter, stroke);
@@ -104,7 +109,6 @@ void Canvas::mouseReleaseEvent(QMouseEvent *event) {
         currentStroke.points.clear();
         update();
     }
-
 }
 
 void Canvas::onStrokeReceived(const Stroke& stroke) {
@@ -112,12 +116,47 @@ void Canvas::onStrokeReceived(const Stroke& stroke) {
     update();
 }
 
-void Canvas::onEraseReceived(int strokeId) {
+void Canvas::onEraseReceived(qint64 strokeId) {
     strokes.removeIf([strokeId](const Stroke& s) {
         return s.id == strokeId;
     });
 
     update();
+}
+
+void Canvas::onPdfReceived(const QByteArray& pdfData) {
+    // QBuffer: QByteArray를 파일처럼 열 수 있게 해주는 래퍼
+    // QPdfDocument::load()는 QIODevice를 받으므로, 파일 저장 없이 메모리에서 바로 로드 가능
+    QBuffer *buffer = new QBuffer(this);
+    buffer->setData(pdfData);
+    buffer->open(QIODevice::ReadOnly);
+
+    pdfDocument->close();   // 기존에 열려 있던 PDF가 있으면 닫기
+    pdfDocument->load(buffer);  // 메모리 버퍼에서 PDF 로드
+
+    currentPageIndex = 0;
+    strokes.clear();        // 새 PDF이므로 획 초기화
+    renderCurrentPage();
+    update();
+}
+
+void Canvas::onPageIndexReceived(int pageIndex) {
+    // 유효한 페이지 범위인지 확인
+    if (pdfDocument->pageCount() == 0) return;
+    if (pageIndex < 0 || pageIndex >= pdfDocument->pageCount()) return;
+
+    currentPageIndex = pageIndex;
+    strokes.clear();        // 페이지 전환 시 획 초기화
+    renderCurrentPage();
+    update();
+}
+
+void Canvas::renderCurrentPage() {
+    if (pdfDocument->pageCount() == 0) return;
+
+    // QPdfDocument::render(): 지정한 페이지를 주어진 픽셀 크기의 QImage로 래스터화
+    // 캔버스 크기(width x height)에 맞춰 렌더링하므로 자동으로 PDF가 캔버스에 꽉 차게 됨
+    backgroundImage = pdfDocument->render(currentPageIndex, QSize(width(), height()));
 }
 
 void Canvas::drawStroke(QPainter &painter, const Stroke& stroke) {
