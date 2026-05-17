@@ -9,6 +9,11 @@ import java.nio.ByteOrder;
 
 public class WebServer extends WebSocketServer {
 
+    // 메시지 타입 (C++ TCP / 웹 모두 동일)
+    private static final int MSG_PEN   = 0;
+    private static final int MSG_ERASE = 1;
+    private static final int MSG_PDF   = 2;
+
     public WebServer(int port) {
         super(new InetSocketAddress(port));
     }
@@ -29,10 +34,11 @@ public class WebServer extends WebSocketServer {
     }
 
     // ★ 바이너리 프레임 — 웹에서 보내는 펜/지우개/PDF가 모두 여기로 들어온다.
+    // C++ Qt 클라이언트(TCP)와 동일한 포맷.
     // 포맷(BigEndian):
-    //   펜    : int32(1) | int64 strokeId | int32 N | int32 color | int32 size | (float32 x, float32 y) × N
-    //   지우개 : int32(0) | int64 strokeId
-    //   PDF   : int32(2) | int32 length | bytes × length
+    //   펜    : int32(0) | int64 strokeId | int32 N | int32 color | int32 size | (float32 x, float32 y) × N
+    //   지우개 : int32(1) | int64 strokeId
+    //   PDF   : int32(2) | int32 length | bytes × length   (웹 전용)
     @Override
     public void onMessage(WebSocket conn, ByteBuffer message) {
         message.order(ByteOrder.BIG_ENDIAN);
@@ -44,7 +50,7 @@ public class WebServer extends WebSocketServer {
 
         try {
             switch (type) {
-                case 1: {
+                case MSG_PEN: {
                     long strokeId = message.getLong();
                     int n = message.getInt();
                     int color = message.getInt();
@@ -58,12 +64,12 @@ public class WebServer extends WebSocketServer {
                     );
                     break;
                 }
-                case 0: {
+                case MSG_ERASE: {
                     long strokeId = message.getLong();
                     System.out.printf("🩹 [웹] ERASE id=%d%n", strokeId);
                     break;
                 }
-                case 2: {
+                case MSG_PDF: {
                     int len = message.getInt();
                     System.out.printf("📄 [웹] PDF length=%dB (payload remaining=%dB)%n",
                         len, message.remaining());
