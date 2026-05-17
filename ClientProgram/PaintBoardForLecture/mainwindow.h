@@ -43,7 +43,7 @@ private:
     void setupColorPalette();             // 색상 버튼 생성 함수
     void updateCanvasLayout();            // New Canvas 후 레이아웃 재배치
 
-    // canvas 생성 및 시그널 연결을 한 곳에서 처리하는 헬퍼 함수
+    // canvas 생성, canvasContainer 레이아웃 배치, 시그널 연결을 한 곳에서 처리하는 헬퍼 함수
     // onNewCanvas와 PDF 수신 양쪽에서 공통으로 사용
     void createCanvas(int w, int h);
 

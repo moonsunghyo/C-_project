@@ -150,40 +150,23 @@ void Canvas::onPageIndexReceived(int pageIndex) {
     renderCurrentPage();
     update();
 }
+
 void Canvas::renderCurrentPage() {
     if (pdfDocument->pageCount() == 0) return;
 
-    // 1. PDF 원본 해상도 크기를 가져옵니다.
-    QSizeF originalSize = pdfDocument->pagePointSize(currentPageIndex);
-    QSize pdfSize = originalSize.toSize();
+    // QPdfDocument::render(): 지정한 페이지를 주어진 픽셀 크기의 QImage로 래스터화
+    // 캔버스 크기(width x height)에 맞춰 렌더링하므로 자동으로 PDF가 캔버스에 꽉 차게 됨
+    backgroundImage = pdfDocument->render(currentPageIndex, QSize(width(), height()));
+}
 
-    // 2. 캔버스의 크기를 PDF 원본 해상도로 고정합니다.
-    setFixedSize(pdfSize);
+void Canvas::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
 
-    // 3. 캔버스를 감싸고 있는 부모 위젯들의 크기 제한을 풀고 강제로 확장시킵니다.
-    QWidget* p = parentWidget();
-    while (p) {
-        // 최대 크기 제한을 무제한으로 풀고, 최소 크기를 PDF 크기만큼 보장합니다.
-        p->setMaximumSize(QSize(16777215, 16777215));
-
-        // 현재 검사 중인 위젯이 바로 나를 감싸는 'canvasContainer'라면,
-        // 8:2 비율 안에서 PDF 크기만큼 가로세로가 늘어날 수 있도록 최소 크기를 지정합니다.
-        if (p->objectName() == "canvasContainer") {
-            p->setMinimumSize(pdfSize);
-        }
-
-        p->adjustSize(); // 부모 위젯 레이아웃 재계산 및 크기 갱신 시도
-
-        // 최상위 메인 윈도우창을 만나면 전체 프로그램 창을 완전히 키우고 루프를 나갑니다.
-        if (p->isWindow()) {
-            p->adjustSize();
-            break;
-        }
-        p = p->parentWidget();
+    // 캔버스 크기가 결정되거나 바뀔 때, 그 크기에 맞춰 PDF를 다시 렌더링합니다.
+    if (pdfDocument && pdfDocument->pageCount() > 0) {
+        renderCurrentPage();
+        update();
     }
-
-    // 4. 원본 화질 그대로 깨끗하게 렌더링합니다.
-    backgroundImage = pdfDocument->render(currentPageIndex, pdfSize);
 }
 
 void Canvas::drawStroke(QPainter &painter, const Stroke& stroke) {
@@ -196,14 +179,4 @@ void Canvas::drawStroke(QPainter &painter, const Stroke& stroke) {
     painter.setPen(QPen(stroke.color, stroke.size, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin)); // roundJoin : 선이 꺾일 떄 부드럽게 연결
     for (int i = 1; i < stroke.points.size(); ++i)
         painter.drawLine(stroke.points[i - 1], stroke.points[i]);
-}
-
-void Canvas::resizeEvent(QResizeEvent *event) {
-    QWidget::resizeEvent(event);
-
-    // 캔버스 크기가 결정되거나 바뀔 때, 그 크기에 맞춰 PDF를 다시 렌더링합니다.
-    if (pdfDocument && pdfDocument->pageCount() > 0) {
-        renderCurrentPage();
-        update();
-    }
 }
