@@ -1,0 +1,63 @@
+# ============================
+# C / C++
+# ============================
+*.o
+*.obj
+*.out
+*.exe
+*.app
+*.dSYM/
+*.so
+*.dylib
+*.a
+*.lib
+a.out
+
+# ============================
+# Java
+# ============================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+# IDE (IntelliJ)
+.idea/
+*.iml
+*.iws
+out/
+
+# ============================
+# Web (Node / Vite)
+# ============================
+node_modules/
+dist/
+.vite/
+.cache/
+*.local
+
+# ============================
+# macOS
+# ============================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ============================
+# VS Code
+# ============================
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.claude/
+
+# ============================
+# Logs & temp
+# ============================
+*.log
+*.tmp
+*.swp
+*~
