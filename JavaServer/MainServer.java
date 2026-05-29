@@ -6,7 +6,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class MainServer {
     // 웹소켓 서버 (8082)
     public static WebServer webserver = new WebServer(8082);
-    
+    public static byte[] currentPDFPacket = null;
     // ✨ C++ 클라이언트(ClientHandler)들을 모두 담아둘 스레드 안전 명단(List) ✨
     public static CopyOnWriteArrayList<ClientHandler> clients = new CopyOnWriteArrayList<>();
 

@@ -2,12 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 
 const PRESETS = [2, 4, 8, 14];
+const COLOR_PRESETS = [
+  '#1F1F1F', // 검정
+  '#E03E00', // 빨강
+  '#F59E0B', // 주황
+  '#22A06B', // 초록
+  '#1A73E8', // 파랑
+  '#7C3AED', // 보라
+];
 
 export default function Toolbar({
   tool,
   setTool,
   thickness,
   setThickness,
+  penColor,
+  setPenColor,
   canUndo,
   canRedo,
   onUndo,
@@ -15,7 +25,9 @@ export default function Toolbar({
   onClearPage,
 }) {
   const [showThickness, setShowThickness] = useState(false);
+  const [showColor, setShowColor] = useState(false);
   const thicknessRef = useRef(null);
+  const colorRef = useRef(null);
 
   useEffect(() => {
     if (!showThickness) return;
@@ -28,7 +40,20 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', onDown);
   }, [showThickness]);
 
+  useEffect(() => {
+    if (!showColor) return;
+    const onDown = (e) => {
+      if (colorRef.current && !colorRef.current.contains(e.target)) {
+        setShowColor(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showColor]);
+
   const previewSize = Math.max(4, Math.min(28, thickness + 2));
+  const eqColor = (a, b) =>
+    (a || '').toLowerCase() === (b || '').toLowerCase();
 
   return (
     <div className="toolbar" onPointerDown={(e) => e.stopPropagation()}>
@@ -46,6 +71,48 @@ export default function Toolbar({
       >
         <Icon name="eraser" />
       </button>
+
+      <div className="tool-divider" />
+
+      <div className="tool-color" ref={colorRef}>
+        <button
+          className="tool-btn"
+          onClick={() => setShowColor((s) => !s)}
+          title="색"
+        >
+          <span
+            className="color-swatch"
+            style={{ width: 16, height: 16, background: penColor }}
+          />
+        </button>
+        {showColor && (
+          <div className="color-pop">
+            <div className="color-presets">
+              {COLOR_PRESETS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={
+                    'color-preset' + (eqColor(c, penColor) ? ' active' : '')
+                  }
+                  style={{ background: c }}
+                  onClick={() => {
+                    setPenColor(c);
+                    setShowColor(false);
+                  }}
+                  title={c}
+                />
+              ))}
+            </div>
+            <input
+              type="color"
+              className="color-custom"
+              value={penColor}
+              onChange={(e) => setPenColor(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
 
       <div className="tool-divider" />
 
