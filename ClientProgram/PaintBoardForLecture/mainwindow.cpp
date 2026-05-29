@@ -35,12 +35,17 @@ MainWindow::MainWindow(QWidget *parent)
     ui->penSlider->setValue(2);
     ui->penSizeEdit->setText("2");
 
+    // 초기 상태: 펜 활성
+    ui->penButton->setChecked(true);
+    ui->eraserButton->setChecked(false);
+    ui->penSizeArea->setVisible(true);
+
 
     // .ui에서 만든 액션 시그널에 연결
     //// 그림 그리기 관련
     connect(ui->actionNew_Canvas, &QAction::triggered, this, &MainWindow::onNewCanvas);
-    connect(ui->actionPen, &QAction::triggered, this, &MainWindow::onPen);
-    connect(ui->actionEraser, &QAction::triggered, this, &MainWindow::onEraser);
+    connect(ui->penButton,    &QPushButton::clicked, this, &MainWindow::onPen);
+    connect(ui->eraserButton, &QPushButton::clicked, this, &MainWindow::onEraser);
     connect(ui->penSlider,  &QSlider::valueChanged, this, &MainWindow::onPenSliderChanged);
     connect(ui->penSizeEdit, &QLineEdit::editingFinished, this, &MainWindow::onPenSizeEditChanged);
     connect(ui->colorPickerButton, &QPushButton::clicked, this, &MainWindow::onColorPicker);
@@ -79,11 +84,17 @@ void MainWindow::onNewCanvas() {
 
 void MainWindow::onPen()
 {
+    ui->penButton->setChecked(true);
+    ui->eraserButton->setChecked(false);
+    ui->penSizeArea->setVisible(true);
     if (canvas) canvas->setTool(Canvas::Tool::Pen);
 }
 
 void MainWindow::onEraser()
 {
+    ui->penButton->setChecked(false);
+    ui->eraserButton->setChecked(true);
+    ui->penSizeArea->setVisible(false);
     if (canvas) canvas->setTool(Canvas::Tool::Eraser);
 }
 
