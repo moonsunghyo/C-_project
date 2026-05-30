@@ -1,9 +1,0 @@
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/PaintBoardForLecture.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/edit_cache.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/rebuild_cache.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/list_install_components.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/install.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/install/local.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/install/strip.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/PaintBoardForLecture_autogen_timestamp_deps.dir
-/Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/CMakeFiles/PaintBoardForLecture_autogen.dir

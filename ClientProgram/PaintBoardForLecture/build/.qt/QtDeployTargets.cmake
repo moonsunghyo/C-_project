@@ -1,2 +1,0 @@
-set(__QT_DEPLOY_TARGET_PaintBoardForLecture_FILE /Users/moonsunghyo/2학년/고프/C-_project/ClientProgram/PaintBoardForLecture/build/PaintBoardForLecture.app/Contents/MacOS/PaintBoardForLecture)
-set(__QT_DEPLOY_TARGET_PaintBoardForLecture_TYPE EXECUTABLE)
