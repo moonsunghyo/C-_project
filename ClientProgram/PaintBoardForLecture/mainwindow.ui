@@ -23,11 +23,6 @@ QWidget#centralwidget {
     background-color: #1e1e1e;
 }
 
-/* ── Side Panel ── */
-QWidget#horizontalLayoutWidget {
-    background-color: #1e1e1e;
-}
-
 /* ── Menu ── */
 QMenuBar {
     background-color: #252526;
@@ -89,32 +84,11 @@ QToolButton:pressed, QToolButton:checked {
     color: #ffffff;
 }
 
-/* ── Color Picker Button ── */
-QPushButton#colorPickerButton {
-    background-color: #3c3c3c;
-    color: #cccccc;
-    border: 1px solid #555555;
-    border-radius: 6px;
-    padding: 8px 0px;
-    font-size: 13px;
-    font-weight: 600;
-}
-QPushButton#colorPickerButton:hover {
-    background-color: #4a4a4a;
-    border-color: #6a6a6a;
-    color: #ffffff;
-}
-QPushButton#colorPickerButton:pressed {
-    background-color: #2a2a2a;
-}
-
 /* ── Labels ── */
 QLabel {
     color: #9d9d9d;
-    font-size: 11px;
+    font-size: 8pt;
     font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
 }
 
 /* ── Slider ── */
@@ -161,16 +135,7 @@ QStatusBar {
    </string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QWidget" name="horizontalLayoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>0</x>
-      <y>0</y>
-      <width>1154</width>
-      <height>660</height>
-     </rect>
-    </property>
-    <layout class="QHBoxLayout" name="horizontalLayout" stretch="8,2">
+   <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,0">
      <property name="spacing">
       <number>0</number>
      </property>
@@ -195,6 +160,18 @@ QStatusBar {
      </item>
      <item>
       <widget class="QWidget" name="sidePanelWidget" native="true">
+       <property name="minimumSize">
+        <size>
+         <width>180</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>180</width>
+         <height>16777215</height>
+        </size>
+       </property>
        <property name="styleSheet">
         <string notr="true">
 QWidget {
@@ -220,13 +197,6 @@ QWidget {
          <number>20</number>
         </property>
         <item>
-         <widget class="QPushButton" name="colorPickerButton">
-          <property name="text">
-           <string>● Color</string>
-          </property>
-         </widget>
-        </item>
-        <item>
          <layout class="QHBoxLayout" name="toolButtonArea">
           <property name="spacing">
            <number>8</number>
@@ -240,8 +210,9 @@ QPushButton {
     color: #aaaaaa;
     border: 1px solid #555555;
     border-radius: 6px;
-    font-size: 20px;
-    font-weight: 300;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 0;
 }
 QPushButton:hover {
     background-color: #4a4a4a;
@@ -256,7 +227,7 @@ QPushButton:checked {
              </string>
             </property>
             <property name="text">
-             <string>🖌️</string>
+             <string>Pen</string>
             </property>
             <property name="checkable">
              <bool>true</bool>
@@ -272,8 +243,9 @@ QPushButton {
     color: #aaaaaa;
     border: 1px solid #555555;
     border-radius: 6px;
-    font-size: 20px;
-    font-weight: 300;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 0;
 }
 QPushButton:hover {
     background-color: #4a4a4a;
@@ -288,7 +260,7 @@ QPushButton:checked {
              </string>
             </property>
             <property name="text">
-             <string>🧽</string>
+             <string>Eraser</string>
             </property>
             <property name="checkable">
              <bool>true</bool>
@@ -363,31 +335,6 @@ QPushButton:checked {
       </widget>
      </item>
     </layout>
-   </widget>
-  </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>1154</width>
-     <height>30</height>
-    </rect>
-   </property>
-   <widget class="QMenu" name="menuFile">
-    <property name="title">
-     <string>File</string>
-    </property>
-    <addaction name="actionNew_Canvas"/>
-   </widget>
-   <widget class="QMenu" name="menuNetwork">
-    <property name="title">
-     <string>Network</string>
-    </property>
-    <addaction name="actionConnet_to_Server"/>
-   </widget>
-   <addaction name="menuFile"/>
-   <addaction name="menuNetwork"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <widget class="QToolBar" name="toolBar">
@@ -400,6 +347,8 @@ QPushButton:checked {
    <attribute name="toolBarBreak">
     <bool>false</bool>
    </attribute>
+   <addaction name="actionNew_Canvas"/>
+   <addaction name="actionConnet_to_Server"/>
   </widget>
   <action name="actionNew_Canvas">
    <property name="text">
@@ -424,7 +373,7 @@ QPushButton:checked {
   </action>
   <action name="actionConnet_to_Server">
    <property name="text">
-    <string>Connet to Server</string>
+    <string>Connect to Server</string>
    </property>
   </action>
  </widget>

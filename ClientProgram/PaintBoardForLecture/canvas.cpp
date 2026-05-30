@@ -154,9 +154,16 @@ void Canvas::onPageIndexReceived(int pageIndex) {
 void Canvas::renderCurrentPage() {
     if (pdfDocument->pageCount() == 0) return;
 
-    // QPdfDocument::render(): 지정한 페이지를 주어진 픽셀 크기의 QImage로 래스터화
-    // 캔버스 크기(width x height)에 맞춰 렌더링하므로 자동으로 PDF가 캔버스에 꽉 차게 됨
-    backgroundImage = pdfDocument->render(currentPageIndex, QSize(width(), height()));
+    // devicePixelRatio를 곱한 물리 픽셀 크기로 렌더링해야
+    // HiDPI(1.5×, 2× 등) 디스플레이에서도 선명하게 표시된다.
+    // setDevicePixelRatio를 설정해두면 paintEvent의 drawImage가
+    // 논리 크기(width × height)에 맞게 자동으로 매핑한다.
+    const qreal dpr = devicePixelRatio()*2;
+    backgroundImage = pdfDocument->render(
+        currentPageIndex,
+        QSize(qRound(width() * dpr), qRound(height() * dpr))
+        );
+    backgroundImage.setDevicePixelRatio(dpr);
 }
 
 void Canvas::resizeEvent(QResizeEvent *event) {

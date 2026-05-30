@@ -9,6 +9,8 @@ class QWidget;
 class QColor;
 class QTcpSocket;
 class QByteArray;
+class QLabel;
+class ColorPickerPopup;
 
 QT_BEGIN_NAMESPACE
 // ui_mainwindow.h 안에 선언될 클래스 전방 선언.
@@ -27,7 +29,6 @@ private slots:
     void onNewCanvas();                     // 새 캠버스 눌렀을 때
     void onPen();                           // 펜 눌렀을 때
     void onEraser();                       // 지우개 눌렀을 때
-    void onColorPicker();                  // 색 고르는 버튼 눌렀을 때.
     void onPenSliderChanged(int value);   // 슬라이더 변경 시
     void onPenSizeEditChanged();          // 텍스트 입력 변경 시
 
@@ -47,6 +48,9 @@ private:
     // onNewCanvas와 PDF 수신 양쪽에서 공통으로 사용
     void createCanvas(int w, int h);
 
+    // 상태바의 연결 표시를 갱신 (연결됨/끊김)
+    void setConnectionStatus(bool connected, const QString& host = QString());
+
 private:
     //실제 위젯들이 정의되어 있을 객체.
     Ui::MainWindow *ui;
@@ -58,5 +62,8 @@ private:
     // 서버 관련
     QTcpSocket* tcpSocket;      // tcp 통신 도와줄 객체
     QByteArray  receiveBuffer;  // 수신 받은 직렬화 데이터 저장한 객체
+
+    QLabel* connectionLabel;    // 상태바에 표시하는 연결 상태 라벨
+    ColorPickerPopup *m_colorPicker;    // 커스텀 HSV 컬러 피커 팝업
 };
 #endif // MAINWINDOW_H

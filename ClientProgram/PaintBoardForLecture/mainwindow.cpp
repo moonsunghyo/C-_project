@@ -9,19 +9,40 @@
 #include <QDataStream>
 #include <QInputDialog>
 #include <QMessageBox>
-#include <QMenuBar>
-#include <QColorDialog>
+#include <QLabel>
+#include <QStatusBar>
+#include <QIcon>
+#include <QSize>
+#include "colorpickerpopup.h"
 #include <QSlider>
 #include <QLineEdit>
 #include <QVBoxLayout>  // canvasContainer에 레이아웃을 붙이기 위해 필요
 #include <QBuffer>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent),ui(new Ui::MainWindow), canvas(nullptr), currentColor(Qt::black)
+    : QMainWindow(parent),ui(new Ui::MainWindow), canvas(nullptr), currentColor(Qt::black),
+    connectionLabel(nullptr), m_colorPicker(nullptr)
 {
     // design 탭에서 배치한 위젯들을 실제로 this에 생성 배치.
     ui->setupUi(this);
-    menuBar()->setNativeMenuBar(false);
+
+    // 상태바에 연결 상태 라벨을 영구 위젯으로 추가하고 초기값을 '끊김'으로 설정
+    connectionLabel = new QLabel(this);
+    connectionLabel->setStyleSheet("padding-right: 8px;");
+    statusBar()->addPermanentWidget(connectionLabel);
+    setConnectionStatus(false);
+
+    // 버튼·액션에 아이콘 설정 (resources.qrc의 :/icons/*.svg)
+    ui->actionNew_Canvas->setIcon(QIcon(":/icons/new.svg"));
+    ui->actionConnet_to_Server->setIcon(QIcon(":/icons/connect.svg"));
+    ui->penButton->setIcon(QIcon(":/icons/pen.svg"));
+    ui->eraserButton->setIcon(QIcon(":/icons/eraser.svg"));
+    ui->penButton->setIconSize(QSize(16, 16));
+    ui->eraserButton->setIconSize(QSize(16, 16));
+
+    // 툴바는 아이콘만이 아니라 아이콘+텍스트로 표시
+    ui->toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    ui->toolBar->setIconSize(QSize(16, 16));
 
     // canvasContainer에 QVBoxLayout을 미리 붙여둔다.
     // 이렇게 해야 createCanvas에서 캔버스를 레이아웃에 추가할 때
@@ -48,18 +69,30 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->eraserButton, &QPushButton::clicked, this, &MainWindow::onEraser);
     connect(ui->penSlider,  &QSlider::valueChanged, this, &MainWindow::onPenSliderChanged);
     connect(ui->penSizeEdit, &QLineEdit::editingFinished, this, &MainWindow::onPenSizeEditChanged);
-    connect(ui->colorPickerButton, &QPushButton::clicked, this, &MainWindow::onColorPicker);
 
     //// 서버 관련
     connect(ui->actionConnet_to_Server, &QAction::triggered, this, &MainWindow::onConnectToServer);
 
 
     // tcpSocket 초기화
-    tcpSocket = new QTcpSocket(this);   //QT에서 데이터 송수신을 감지해서, 이 객체를 통해 시그널 함수들을 emit 해 줌
+    tcpSocket = new QTcpSocket(this);
 
     //// tcpSocket의 시그널에 연결
-    connect(tcpSocket, &QTcpSocket::readyRead, this, &MainWindow::onSocketReadyRead);       // 몇 바이트든 데이터가 들어 왔을 때,
-    connect(tcpSocket, &QTcpSocket::disconnected, this, &MainWindow::onSocketDisconnected); // 연결이 끊겼을 때
+    connect(tcpSocket, &QTcpSocket::readyRead, this, &MainWindow::onSocketReadyRead);
+    connect(tcpSocket, &QTcpSocket::disconnected, this, &MainWindow::onSocketDisconnected);
+
+    // 커스텀 컬러 피커 팝업 초기화
+    m_colorPicker = new ColorPickerPopup(this);
+    m_colorPicker->setColor(currentColor);  // 펜 초기색(Qt::black)과 피커 초기 상태 동기화
+    connect(m_colorPicker, &ColorPickerPopup::colorChanged,
+            this, [this](const QColor &c) {
+                currentColor = c;
+                if (canvas) canvas->setPenColor(currentColor);
+            });
+
+    // 사이드 패널 레이아웃 맨 위에 컬러 피커 삽입
+    auto *sp = static_cast<QVBoxLayout*>(ui->sidePanelWidget->layout());
+    sp->insertWidget(0, m_colorPicker);
 }
 
 MainWindow::~MainWindow() {
@@ -119,17 +152,6 @@ void MainWindow::onPenSizeEditChanged()
 
 
 
-void MainWindow::onColorPicker()
-{
-    QColor color = QColorDialog::getColor(currentColor, this, "색상 선택"); //기본적으로 있는 색상 선택 dialog 팝업
-    if (color.isValid()) {
-        currentColor = color;
-        ui->colorPickerButton->setStyleSheet(   // color picker 버튼 색 바꿔주기.
-            QString("background-color: %1; border: 1px solid #888;").arg(color.name()));
-        if (canvas) canvas->setPenColor(currentColor);
-    }
-}
-
 
 // **********************************************************
 //
@@ -155,6 +177,7 @@ void MainWindow::onConnectToServer() {
     if (tcpSocket->waitForConnected(3000)) {
         QByteArray idBytes = UserID.toUtf8().left(10).leftJustified(10, ' ', true); // 사용자 id 보내기
         tcpSocket->write(idBytes);
+        setConnectionStatus(true, host);
     } else {
         QMessageBox::warning(this, "연결 실패", "서버에 연결할 수 없어요.");
     }
@@ -342,4 +365,17 @@ void MainWindow::onSocketReadyRead() {
 
 void MainWindow::onSocketDisconnected() {
     qDebug() << "서버 연결 끊김";
+    setConnectionStatus(false);
+}
+
+void MainWindow::setConnectionStatus(bool connected, const QString& host) {
+    if (!connectionLabel) return;
+
+    if (connected) {
+        QString text = "<span style='color:#3fb950;'>\u25CF</span> 연결됨";
+        if (!host.isEmpty()) text += " · " + host;
+        connectionLabel->setText(text);
+    } else {
+        connectionLabel->setText("<span style='color:#f85149;'>\u25CF</span> 끊김");
+    }
 }
