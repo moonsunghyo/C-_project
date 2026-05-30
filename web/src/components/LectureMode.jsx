@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { pdfjsLib } from '../lib/pdf.js';
+import { pdfjsLib, CDN_WORKER } from '../lib/pdf.js';
 import Icon from './Icon.jsx';
 import ThumbList from './ThumbList.jsx';
 import PageStage from './PageStage.jsx';
 import Toolbar from './Toolbar.jsx';
 import WsStatus from './WsStatus.jsx';
+import ParticipantList from './ParticipantList.jsx';
 import {
   colorToInt,
   decodeMessage,
@@ -15,12 +16,11 @@ import {
   safeSend,
 } from '../lib/protocol.js';
 
-const PEN_COLOR = '#E03E00';
+const DEFAULT_PEN_COLOR = '#E03E00';
 
 export default function LectureMode({
   pdfData,
   fileName,
-  sessionCode,
   wsRef,
   wsStatus,
   onEnd,
@@ -28,6 +28,13 @@ export default function LectureMode({
   const [pdfDoc, setPdfDoc] = useState(null);
   const [pageCount, setPageCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const currentPageRef = useRef(1);
+
+  // Sync ref with state for use in event listeners
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
   const [loadError, setLoadError] = useState(null);
 
   // strokes per page: { [pageNum]: stroke[] }
@@ -39,74 +46,94 @@ export default function LectureMode({
 
   const [tool, setTool] = useState('pen');
   const [thickness, setThickness] = useState(3);
+  const [penColor, setPenColor] = useState(DEFAULT_PEN_COLOR);
+  const [participants, setParticipants] = useState([]);
 
-  const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState(null);
 
   // Load PDF whenever pdfData changes
-  // 주의: pdfjs는 worker를 전역적으로 공유한다. 그래서 cleanup에서 loading task를
-  // 곧장 destroy하면 React StrictMode의 effect 더블 실행 때 worker가 죽어버려서
-  // "Error: Worker was destroyed"가 나며 두 번째 시도가 실패한다.
-  // 또 pdfjs가 typed array의 underlying buffer를 worker로 transfer해버리는
-  // 경우가 있어, 같은 pdfData를 다시 넘기면 detached가 될 수 있다.
-  // → 매번 buffer를 복제해서 전달하고, cleanup은 cancel 플래그로만 처리한다.
   useEffect(() => {
-    if (!pdfData) return;
+    if (!pdfData) {
+      console.warn('[pdf] No pdfData provided');
+      return;
+    }
+    
     setLoadError(null);
     let cancelled = false;
     let loadedDoc = null;
 
-    const dataCopy = pdfData.slice(); // ArrayBuffer transfer 방지용 복제
-    const task = pdfjsLib.getDocument({ data: dataCopy });
-    task.promise
-      .then((doc) => {
-        if (cancelled) {
-          doc.destroy();
-          return;
-        }
-        loadedDoc = doc;
-        setPdfDoc(doc);
-        setPageCount(doc.numPages);
-        setCurrentPage(1);
-      })
-      .catch((err) => {
+    const loadWithWorker = (workerSrc) => {
+      if (workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+      }
+      
+      // pdfData가 ArrayBuffer인 경우 직접 slice, Uint8Array인 경우 buffer를 slice
+      const buffer = pdfData instanceof ArrayBuffer ? pdfData : pdfData.buffer;
+      const dataCopy = buffer.slice(0);
+      
+      console.log(`[pdf] attempting load with worker: ${workerSrc || 'default'}, size: ${dataCopy.byteLength}`);
+      
+      const task = pdfjsLib.getDocument({ 
+        data: dataCopy,
+        cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/cmaps/`,
+        cMapPacked: true,
+      });
+
+      return task.promise
+        .then((doc) => {
+          console.log('[pdf] loaded successfully:', doc.numPages, 'pages');
+          if (cancelled) {
+            doc.destroy();
+            return;
+          }
+          loadedDoc = doc;
+          setPdfDoc(doc);
+          setPageCount(doc.numPages);
+          setCurrentPage(1);
+        });
+    };
+
+    loadWithWorker().catch((err) => {
+      console.warn('[pdf] local worker failed, trying CDN...', err);
+      if (cancelled) return;
+      
+      // 로컬 워커 실패 시 CDN 워커로 재시도
+      loadWithWorker(CDN_WORKER).catch((err2) => {
         if (cancelled) return;
-        console.error('PDF load error:', err);
+        console.error('[pdf] all load attempts failed:', err2);
         setLoadError(
-          'PDF를 불러올 수 없습니다: ' + (err?.message || String(err))
+          'PDF를 불러올 수 없습니다. 파일 형식을 확인하거나 나중에 다시 시도해주세요. (' + (err2?.message || String(err2)) + ')'
         );
       });
+    });
 
     return () => {
       cancelled = true;
-      // 이미 로드된 문서만 안전하게 정리. loading task 자체는 destroy하지 않는다.
       if (loadedDoc) loadedDoc.destroy();
     };
-  }, [pdfData]);
+  }, [pdfData, fileName]);
 
   // 서버가 broadcast하는 바이너리 프레임을 받아서 캔버스에 반영.
-  // 송신과 완전히 동일한 포맷 (encodePen / encodeErase의 역).
-  //   pen   → 현재 페이지에 stroke 추가 (page 정보가 패킷에 없어서 현재 페이지에 그림)
-  //   erase → 해당 id stroke를 모든 페이지에서 제거
   useEffect(() => {
     const ws = wsRef?.current;
     if (!ws) return;
 
     const onMessage = (event) => {
-      if (!(event.data instanceof ArrayBuffer)) return; // 텍스트는 무시
+      if (!(event.data instanceof ArrayBuffer)) return;
       const msg = decodeMessage(event.data);
       if (!msg) return;
 
       if (msg.type === 'pen') {
         const stroke = {
-          id: msg.id, // BigInt
+          id: msg.id,
           color: intToColor(msg.color),
           thickness: msg.size,
           points: msg.points,
+          author: msg.author || '학생',
         };
         setStrokesByPage((s) => ({
           ...s,
-          [currentPage]: [...(s[currentPage] || []), stroke],
+          [currentPageRef.current]: [...(s[currentPageRef.current] || []), stroke],
         }));
       } else if (msg.type === 'erase') {
         setStrokesByPage((s) => {
@@ -116,33 +143,27 @@ export default function LectureMode({
           }
           return next;
         });
+      } else if (msg.type === 'users') {
+        setParticipants(msg.users);
       }
     };
 
     ws.addEventListener('message', onMessage);
     return () => ws.removeEventListener('message', onMessage);
-  }, [wsRef, wsStatus, currentPage]);
+  }, [wsRef, wsStatus]);
 
-  // 페이지가 "실제로 바뀐 경우"에만 서버에 현재 페이지 번호 송신 (type=3).
-  // - 첫 진입(=PDF 로드 직후) 시점에는 보내지 않고 baseline만 기록.
-  // - 사용자가 다른 페이지로 이동한 경우에만 송신.
-  // - 송신 실패(ws not open)면 baseline을 유지해서, 다음 트리거(예: ws 재연결)에 자동 재시도.
+  // 페이지 이동 시 서버에 알림
   const lastSentPageRef = useRef(null);
   useEffect(() => {
     if (!pageCount) return;
 
     if (lastSentPageRef.current === null) {
-      // 첫 effect 실행 — 초기 페이지(보통 1)는 송신하지 않고 baseline만 기록
       lastSentPageRef.current = currentPage;
       return;
     }
-    if (lastSentPageRef.current === currentPage) return; // 변경 없음
+    if (lastSentPageRef.current === currentPage) return;
 
     const ok = safeSend(wsRef?.current, encodePage(currentPage));
-    console.log(
-      '[ws] page send:',
-      ok ? `ok (page=${currentPage})` : 'ws not open'
-    );
     if (ok) lastSentPageRef.current = currentPage;
   }, [currentPage, pageCount, wsStatus, wsRef]);
 
@@ -151,43 +172,36 @@ export default function LectureMode({
     setTimeout(() => setToast(null), 1600);
   };
 
-  const copyCode = () => {
-    navigator.clipboard?.writeText(sessionCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-    showToast('세션 코드가 복사되었습니다');
-  };
-
   const strokes = strokesByPage[currentPage] || [];
 
   const handleStrokesChange = (next) => {
     const stack = undoRef.current[currentPage] || [];
     undoRef.current[currentPage] = [...stack, strokes];
     redoRef.current[currentPage] = [];
-    setStrokesByPage((s) => ({ ...s, [currentPage]: next }));
+    
+    // 강사가 그린 선에 작성자 정보 명시
+    const nextWithAuthor = next.map(s => s.author ? s : { ...s, author: '강사' });
+    setStrokesByPage((s) => ({ ...s, [currentPage]: nextWithAuthor }));
 
-    // 새로 추가된 stroke만 골라 서버로 송신 (지우개는 PageStage가 onEraseStroke로 따로 알려줌)
     if (next.length > strokes.length) {
       const added = next[next.length - 1];
       if (added && !added.eraser) {
-        const ok = safeSend(
+        safeSend(
           wsRef?.current,
           encodePen(
+            currentPage,
             added.id,
             added.points,
             colorToInt(added.color),
             added.thickness
           )
         );
-        console.log('[ws] pen send:', ok ? 'ok' : 'ws not open');
       }
     }
   };
 
-  // 지우개로 stroke 하나가 사라질 때마다 호출됨 (PageStage → 여기)
   const handleEraseStroke = (strokeId) => {
-    const ok = safeSend(wsRef?.current, encodeErase(strokeId));
-    console.log('[ws] erase send:', ok ? 'ok' : 'ws not open');
+    safeSend(wsRef?.current, encodeErase(currentPage, strokeId));
   };
 
   const undo = () => {
@@ -218,7 +232,6 @@ export default function LectureMode({
     showToast('현재 페이지의 필기를 모두 지웠습니다');
   };
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -241,7 +254,6 @@ export default function LectureMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes, pageCount]);
 
   const annotated = useMemo(() => {
@@ -283,27 +295,24 @@ export default function LectureMode({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <WsStatus status={wsStatus} />
-            <div className="session-chip">
-              <span className="session-chip-label">코드</span>
-              <span className="session-chip-code">{sessionCode}</span>
-              <button className="session-chip-copy" onClick={copyCode}>
-                <Icon name={copied ? 'check' : 'copy'} size={14} stroke={1.8} />
-              </button>
-            </div>
             <button className="end-btn" onClick={onEnd}>
               <Icon name="logout" size={12} stroke={1.8} />
-              세션 종료
+              강의 종료
             </button>
           </div>
         </div>
 
         <div className="stage-canvas-area">
           {loadError ? (
-            <div className="stage-empty">{loadError}</div>
+            <div className="stage-empty">
+              <Icon name="alertCircle" size={48} stroke={1.5} color="var(--accent)" />
+              <div style={{ marginTop: 16 }}>{loadError}</div>
+              <button className="end-btn" style={{ marginTop: 24 }} onClick={onEnd}>돌아가기</button>
+            </div>
           ) : !pdfDoc ? (
             <div className="stage-empty">
               <div className="spinner" />
-              <div style={{ fontSize: 13 }}>PDF 불러오는 중…</div>
+              <div style={{ fontSize: 13, marginTop: 12 }}>PDF 문서를 처리하는 중입니다…</div>
             </div>
           ) : (
             <PageStage
@@ -314,7 +323,7 @@ export default function LectureMode({
               onStrokesChange={handleStrokesChange}
               onEraseStroke={handleEraseStroke}
               tool={tool}
-              penColor={PEN_COLOR}
+              penColor={penColor}
               thickness={thickness}
             />
           )}
@@ -327,6 +336,8 @@ export default function LectureMode({
               setTool={setTool}
               thickness={thickness}
               setThickness={setThickness}
+              penColor={penColor}
+              setPenColor={setPenColor}
               canUndo={canUndo}
               canRedo={canRedo}
               onUndo={undo}
@@ -356,7 +367,13 @@ export default function LectureMode({
         )}
       </main>
 
+      <ParticipantList participants={participants} />
+
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+ className="toast">{toast}</div>}
     </div>
   );
 }

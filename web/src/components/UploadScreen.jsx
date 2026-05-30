@@ -3,17 +3,10 @@ import Icon from './Icon.jsx';
 import WsStatus from './WsStatus.jsx';
 import { encodePdf, safeSend } from '../lib/protocol.js';
 
-export default function UploadScreen({ sessionCode, wsRef, wsStatus, onUploaded, onEnd }) {
+export default function UploadScreen({ wsRef, wsStatus, onUploaded, onEnd }) {
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(null); // { name, size, pct }
-  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
-
-  const copyCode = () => {
-    navigator.clipboard?.writeText(sessionCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
 
   const handleFile = (file) => {
     if (!file) return;
@@ -35,9 +28,18 @@ export default function UploadScreen({ sessionCode, wsRef, wsStatus, onUploaded,
       clearInterval(tick);
       setProgress((p) => p && { ...p, pct: 100 });
       const data = new Uint8Array(e.target.result);
+      console.log(`[Upload] File read complete. Size: ${data.byteLength} bytes`);
+      
+      if (data.byteLength === 0) {
+        alert('파일이 비어있습니다.');
+        return;
+      }
+
       // 서버로 PDF 전체 전송 (type=2 | length | bytes)
       const sent = safeSend(wsRef?.current, encodePdf(data));
       console.log('[ws] pdf send:', sent ? 'ok' : 'ws not open');
+      
+      console.log('[Upload] Triggering onUploaded callback');
       setTimeout(() => onUploaded({ data, name: file.name }), 350);
     };
     reader.onerror = () => {
@@ -63,13 +65,6 @@ export default function UploadScreen({ sessionCode, wsRef, wsStatus, onUploaded,
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <WsStatus status={wsStatus} />
-          <div className="session-chip">
-            <span className="session-chip-label">세션 코드</span>
-            <span className="session-chip-code">{sessionCode}</span>
-            <button className="session-chip-copy" onClick={copyCode} title="복사">
-              <Icon name={copied ? 'check' : 'copy'} size={14} stroke={1.8} />
-            </button>
-          </div>
           <button className="end-btn" onClick={onEnd}>
             <Icon name="logout" size={12} stroke={1.8} />
             종료

@@ -9,21 +9,40 @@
 #include <QDataStream>
 #include <QInputDialog>
 #include <QMessageBox>
-#include <QMenuBar>
-#include <QColorDialog>
+#include <QLabel>
+#include <QStatusBar>
+#include <QIcon>
+#include <QSize>
+#include "colorpickerpopup.h"
 #include <QSlider>
 #include <QLineEdit>
 #include <QVBoxLayout>  // canvasContainer에 레이아웃을 붙이기 위해 필요
-#include <QGridLayout>
-#include <QPushButton>
 #include <QBuffer>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent),ui(new Ui::MainWindow), canvas(nullptr), currentColor(Qt::black)
+    : QMainWindow(parent),ui(new Ui::MainWindow), canvas(nullptr), currentColor(Qt::black),
+    connectionLabel(nullptr), m_colorPicker(nullptr)
 {
     // design 탭에서 배치한 위젯들을 실제로 this에 생성 배치.
     ui->setupUi(this);
-    menuBar()->setNativeMenuBar(false);
+
+    // 상태바에 연결 상태 라벨을 영구 위젯으로 추가하고 초기값을 '끊김'으로 설정
+    connectionLabel = new QLabel(this);
+    connectionLabel->setStyleSheet("padding-right: 8px;");
+    statusBar()->addPermanentWidget(connectionLabel);
+    setConnectionStatus(false);
+
+    // 버튼·액션에 아이콘 설정 (resources.qrc의 :/icons/*.svg)
+    ui->actionNew_Canvas->setIcon(QIcon(":/icons/new.svg"));
+    ui->actionConnet_to_Server->setIcon(QIcon(":/icons/connect.svg"));
+    ui->penButton->setIcon(QIcon(":/icons/pen.svg"));
+    ui->eraserButton->setIcon(QIcon(":/icons/eraser.svg"));
+    ui->penButton->setIconSize(QSize(16, 16));
+    ui->eraserButton->setIconSize(QSize(16, 16));
+
+    // 툴바는 아이콘만이 아니라 아이콘+텍스트로 표시
+    ui->toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    ui->toolBar->setIconSize(QSize(16, 16));
 
     // canvasContainer에 QVBoxLayout을 미리 붙여둔다.
     // 이렇게 해야 createCanvas에서 캔버스를 레이아웃에 추가할 때
@@ -37,27 +56,43 @@ MainWindow::MainWindow(QWidget *parent)
     ui->penSlider->setValue(2);
     ui->penSizeEdit->setText("2");
 
+    // 초기 상태: 펜 활성
+    ui->penButton->setChecked(true);
+    ui->eraserButton->setChecked(false);
+    ui->penSizeArea->setVisible(true);
+
 
     // .ui에서 만든 액션 시그널에 연결
     //// 그림 그리기 관련
     connect(ui->actionNew_Canvas, &QAction::triggered, this, &MainWindow::onNewCanvas);
-    connect(ui->actionPen, &QAction::triggered, this, &MainWindow::onPen);
-    connect(ui->actionEraser, &QAction::triggered, this, &MainWindow::onEraser);
+    connect(ui->penButton,    &QPushButton::clicked, this, &MainWindow::onPen);
+    connect(ui->eraserButton, &QPushButton::clicked, this, &MainWindow::onEraser);
     connect(ui->penSlider,  &QSlider::valueChanged, this, &MainWindow::onPenSliderChanged);
     connect(ui->penSizeEdit, &QLineEdit::editingFinished, this, &MainWindow::onPenSizeEditChanged);
-    connect(ui->colorPickerButton, &QPushButton::clicked, this, &MainWindow::onColorPicker);
 
     //// 서버 관련
     connect(ui->actionConnet_to_Server, &QAction::triggered, this, &MainWindow::onConnectToServer);
 
-    setupColorPalette();
 
     // tcpSocket 초기화
-    tcpSocket = new QTcpSocket(this);   //QT에서 데이터 송수신을 감지해서, 이 객체를 통해 시그널 함수들을 emit 해 줌
+    tcpSocket = new QTcpSocket(this);
 
     //// tcpSocket의 시그널에 연결
-    connect(tcpSocket, &QTcpSocket::readyRead, this, &MainWindow::onSocketReadyRead);       // 몇 바이트든 데이터가 들어 왔을 때,
-    connect(tcpSocket, &QTcpSocket::disconnected, this, &MainWindow::onSocketDisconnected); // 연결이 끊겼을 때
+    connect(tcpSocket, &QTcpSocket::readyRead, this, &MainWindow::onSocketReadyRead);
+    connect(tcpSocket, &QTcpSocket::disconnected, this, &MainWindow::onSocketDisconnected);
+
+    // 커스텀 컬러 피커 팝업 초기화
+    m_colorPicker = new ColorPickerPopup(this);
+    m_colorPicker->setColor(currentColor);  // 펜 초기색(Qt::black)과 피커 초기 상태 동기화
+    connect(m_colorPicker, &ColorPickerPopup::colorChanged,
+            this, [this](const QColor &c) {
+                currentColor = c;
+                if (canvas) canvas->setPenColor(currentColor);
+            });
+
+    // 사이드 패널 레이아웃 맨 위에 컬러 피커 삽입
+    auto *sp = static_cast<QVBoxLayout*>(ui->sidePanelWidget->layout());
+    sp->insertWidget(0, m_colorPicker);
 }
 
 MainWindow::~MainWindow() {
@@ -69,39 +104,6 @@ MainWindow::~MainWindow() {
 //                           slots
 //
 // **********************************************************
-
-void MainWindow::setupColorPalette() {
-    QGridLayout* grid = new QGridLayout(ui->colorSwatchContainer);
-    grid->setSpacing(4);
-    grid->setContentsMargins(0, 0, 0, 0);
-
-    const QList<QColor> colors = {
-        QColor("#1a1a1a"), QColor("#f0f0f0"), QColor("#e53935"), QColor("#fb8c00"),
-        QColor("#fdd835"), QColor("#43a047"), QColor("#1e88e5"), QColor("#8e24aa"),
-        QColor("#00acc1"), QColor("#f06292"), QColor("#795548"), QColor("#607d8b"),
-    };
-
-    int col = 0, row = 0;
-    for (const QColor& c : colors) {
-        QPushButton* btn = new QPushButton(ui->colorSwatchContainer);
-        btn->setFixedSize(24, 24);
-        btn->setStyleSheet(QString(
-            "QPushButton { background-color: %1; border: 2px solid transparent; border-radius: 4px; }"
-            "QPushButton:hover { border-color: #aaaaaa; }"
-        ).arg(c.name()));
-        connect(btn, &QPushButton::clicked, this, [this, c]() {
-            currentColor = c;
-            ui->colorPickerButton->setStyleSheet(
-                QString("background-color: %1; border: 2px solid #555555; border-radius: 5px;"
-                        "min-height: 30px; font-size: 11px; font-weight: 600; color: %2;")
-                    .arg(c.name())
-                    .arg(c.lightness() > 128 ? "#000000" : "#ffffff"));
-            if (canvas) canvas->setPenColor(currentColor);
-        });
-        grid->addWidget(btn, row, col++);
-        if (col >= 4) { col = 0; row++; }
-    }
-}
 
 void MainWindow::onNewCanvas() {
     bool ok1, ok2;
@@ -115,15 +117,17 @@ void MainWindow::onNewCanvas() {
 
 void MainWindow::onPen()
 {
-    ui->actionPen->setChecked(true);
-    ui->actionEraser->setChecked(false);
+    ui->penButton->setChecked(true);
+    ui->eraserButton->setChecked(false);
+    ui->penSizeArea->setVisible(true);
     if (canvas) canvas->setTool(Canvas::Tool::Pen);
 }
 
 void MainWindow::onEraser()
 {
-    ui->actionEraser->setChecked(true);
-    ui->actionPen->setChecked(false);
+    ui->penButton->setChecked(false);
+    ui->eraserButton->setChecked(true);
+    ui->penSizeArea->setVisible(false);
     if (canvas) canvas->setTool(Canvas::Tool::Eraser);
 }
 
@@ -148,20 +152,6 @@ void MainWindow::onPenSizeEditChanged()
 
 
 
-void MainWindow::onColorPicker()
-{
-    QColor color = QColorDialog::getColor(currentColor, this, "색상 선택"); //기본적으로 있는 색상 선택 dialog 팝업
-    if (color.isValid()) {
-        currentColor = color;
-        ui->colorPickerButton->setStyleSheet(
-            QString("background-color: %1; border: 2px solid #707070; border-radius: 6px; "
-                    "min-height: 40px; font-size: 13px; font-weight: bold; color: %2;")
-                .arg(color.name())
-                .arg(color.lightness() > 128 ? "#000000" : "#ffffff"));
-        if (canvas) canvas->setPenColor(currentColor);
-    }
-}
-
 
 // **********************************************************
 //
@@ -173,7 +163,7 @@ void MainWindow::onConnectToServer() {
     bool ok;
 
     // 필요 정보 입력받기
-    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.3", &ok);
+    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.2", &ok);
     if (!ok || host.isEmpty()) return;
 
     int port = QInputDialog::getInt(this, "서버 연결", "포트:", 8081, 1, 65535, 1, &ok);
@@ -187,6 +177,7 @@ void MainWindow::onConnectToServer() {
     if (tcpSocket->waitForConnected(3000)) {
         QByteArray idBytes = UserID.toUtf8().left(10).leftJustified(10, ' ', true); // 사용자 id 보내기
         tcpSocket->write(idBytes);
+        setConnectionStatus(true, host);
     } else {
         QMessageBox::warning(this, "연결 실패", "서버에 연결할 수 없어요.");
     }
@@ -360,47 +351,9 @@ void MainWindow::onSocketReadyRead() {
 
             qint32 pageIndex;
             ds >> pageIndex;
-            int consumed = 8; // type(4) + pageIndex(4)
 
-            // 이 페이지에 저장된 획들: 헤더(20바이트) 읽을 수 없을 때까지 반복
-            // remove는 내부 루프에서 호출하면 QDataStream position이 어긋나므로 마지막에 한 번만 호출
-            QList<Stroke> pageStrokes;
-            while (ds.device()->bytesAvailable() >= 20) {
-                char headerBuf[20];
-                ds.device()->peek(headerBuf, 20);
-                qint32 pointCount;
-                memcpy(&pointCount, &headerBuf[8], sizeof(qint32));
-                pointCount = qFromBigEndian(pointCount);
-
-                if (ds.device()->bytesAvailable() < 20 + pointCount * 8) break;
-
-                qint64 id;
-                qint32 pc, color, size;
-                ds >> id >> pc >> color >> size;
-
-                Stroke stroke;
-                stroke.id    = id;
-                stroke.color = QColor::fromRgba((QRgb)color);
-                stroke.size  = size;
-                for (int i = 0; i < pc; i++) {
-                    float x, y;
-                    ds >> x >> y;
-                    stroke.points.append(QPoint(
-                        static_cast<int>(x * canvas->width()),
-                        static_cast<int>(y * canvas->height())
-                    ));
-                }
-                pageStrokes.append(stroke);
-                consumed += 20 + pc * 8;
-            }
-
-            receiveBuffer.remove(0, consumed);
-
-            if (canvas) {
-                canvas->onPageIndexReceived((int)pageIndex - 1);
-                for (const Stroke& s : pageStrokes)
-                    canvas->onStrokeReceived(s);
-            }
+            receiveBuffer.remove(0, 8);
+            if (canvas) canvas->onPageIndexReceived((int)pageIndex - 1);
 
         } else {
             // 알 수 없는 타입 — 버퍼 초기화 (오류 방어)
@@ -412,4 +365,17 @@ void MainWindow::onSocketReadyRead() {
 
 void MainWindow::onSocketDisconnected() {
     qDebug() << "서버 연결 끊김";
+    setConnectionStatus(false);
+}
+
+void MainWindow::setConnectionStatus(bool connected, const QString& host) {
+    if (!connectionLabel) return;
+
+    if (connected) {
+        QString text = "<span style='color:#3fb950;'>\u25CF</span> 연결됨";
+        if (!host.isEmpty()) text += " · " + host;
+        connectionLabel->setText(text);
+    } else {
+        connectionLabel->setText("<span style='color:#f85149;'>\u25CF</span> 끊김");
+    }
 }
