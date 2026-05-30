@@ -65,11 +65,22 @@ public class WebServer extends WebSocketServer {
                         "✏️ [웹] PEN id=%d, N=%d, color=0x%08X, size=%d, payload=%dB (expected %dB)%n",
                         strokeId, n, color, size, available, expected
                     );
+
+                    // ✨ 교수(웹)가 그린 선도 현재 페이지 히스토리에 저장해야
+                    //    페이지를 전환했다 돌아오거나 새 학생이 접속할 때 재전송(replay)된다.
+                    //    userId는 빈 문자열 → 웹이 다시 받을 때 작성자 '강사'로 해석된다.
+                    MainServer.getHistoryForPage(MainServer.currentPage).put(
+                        strokeId,
+                        new MainServer.StrokeRecord(packet, "")
+                    );
                     break;
                 }
                 case MSG_ERASE: {
                     long strokeId = message.getLong();
                     System.out.printf("🩹 [웹] ERASE id=%d%n", strokeId);
+
+                    // ✨ 교수(웹)가 지운 선도 현재 페이지 히스토리에서 제거.
+                    MainServer.getHistoryForPage(MainServer.currentPage).remove(strokeId);
                     break;
                 }
                 case MSG_PDF: {
@@ -140,7 +151,11 @@ public class WebServer extends WebSocketServer {
                             conn.send(webBuffer.array());
                         }
                     }
-                    break;
+                    // ✨ 페이지 이동 패킷과 낙서 재전송은 위에서 이미 C++ 클라이언트에 보냈다.
+                    //    여기서 break로 빠져 맨 아래 공통 중계 루프로 내려가면, 같은 페이지 이동
+                    //    패킷이 한 번 더 전송되어 C++가 strokes.clear()를 또 실행한다.
+                    //    그러면 방금 재전송한 낙서가 전부 지워지므로, 여기서 바로 return 한다.
+                    return;
                 }
                 case MSG_USERS: {
                     System.out.println("👥 [웹] 인원 목록 새로고침 요청 수신");
