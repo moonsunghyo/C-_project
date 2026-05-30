@@ -163,7 +163,7 @@ void MainWindow::onConnectToServer() {
     bool ok;
 
     // 필요 정보 입력받기
-    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.2", &ok);
+    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.3", &ok);
     if (!ok || host.isEmpty()) return;
 
     int port = QInputDialog::getInt(this, "서버 연결", "포트:", 8081, 1, 65535, 1, &ok);
@@ -250,12 +250,20 @@ void MainWindow::onSocketReadyRead() {
     // 소켓에 들어온 데이터를 누적 버퍼에 추가
     receiveBuffer.append(tcpSocket->readAll());
 
-    // QDataStream은 루프 바깥에서 딱 한 번만 선언 (매우 중요!)
-    QDataStream ds(&receiveBuffer, QIODevice::ReadOnly);
-    ds.setByteOrder(QDataStream::BigEndian);
-    ds.setFloatingPointPrecision(QDataStream::SinglePrecision);
-
     while (true) {
+        // ★ QDataStream을 매 반복마다 새로 만든다 (버퍼 맨 앞 = 다음 패킷의 시작).
+        //   각 패킷을 처리한 뒤 아래에서 receiveBuffer.remove()로 소비분을 잘라내므로,
+        //   다음 반복의 새 스트림은 항상 다음 패킷의 offset 0을 가리키게 된다.
+        //
+        //   [예전 버그] 스트림을 루프 바깥에서 한 번만 만들면, remove()로 버퍼 앞을
+        //   잘라내도 스트림 내부의 읽기 위치(position)는 그대로 남아 버퍼와 어긋난다.
+        //   그래서 페이지 이동처럼 "페이지 패킷 + 낙서 패킷들"이 한 번의 readyRead로
+        //   같이 도착하면, 둘째 패킷부터 엉뚱한 위치에서 읽혀 type이 깨지고
+        //   else 분기의 receiveBuffer.clear()로 빠져 낙서 기록이 통째로 사라졌다.
+        QDataStream ds(&receiveBuffer, QIODevice::ReadOnly);
+        ds.setByteOrder(QDataStream::BigEndian);
+        ds.setFloatingPointPrecision(QDataStream::SinglePrecision);
+
         if (ds.device()->bytesAvailable() < 4) break;
 
         qint32 type;
