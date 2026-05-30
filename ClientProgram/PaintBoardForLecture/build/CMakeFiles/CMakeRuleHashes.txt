@@ -1,0 +1,4 @@
+# Hashes of file build rules.
+a34f624020e53f7ef6ede25b6b107d3b CMakeFiles/PaintBoardForLecture_autogen
+4430499b1460af7fc5e86bc1b8f21905 PaintBoardForLecture_autogen/EWIEGA46WW/qrc_resources.cpp
+41622becc63fd039c07a6a7fbbdb962d PaintBoardForLecture_autogen/timestamp
