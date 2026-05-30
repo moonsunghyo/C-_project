@@ -3,8 +3,6 @@ import { newStrokeId } from '../lib/protocol.js';
 
 // PDF page rendered below + drawing canvas above.
 // Strokes are normalized (0–1) so they survive re-renders at any scale.
-// 각 stroke에는 64비트 id(BigInt)가 부여되어, 지우개는 stroke 단위로 삭제한다.
-
 function drawStroke(ctx, s, w, h) {
   if (!s.points || s.points.length === 0) return;
   ctx.save();
@@ -29,7 +27,6 @@ function drawStroke(ctx, s, w, h) {
 }
 
 // 지우개 위치(normalized)와 stroke가 충돌하는지: 점 하나라도 반경 안이면 true.
-// 반경도 normalized — 캔버스의 짧은 변 기준 비율.
 function strokeHit(stroke, ex, ey, radiusN) {
   const r2 = radiusN * radiusN;
   for (const p of stroke.points) {
@@ -56,41 +53,73 @@ export default function PageStage({
   const drawingRef = useRef(null); // 펜으로 그리는 중인 stroke
   const [renderSize, setRenderSize] = useState(null);
   const [rendering, setRendering] = useState(true);
+  const [hoverInfo, setHoverInfo] = useState(null); // { x, y, author }
 
   // Render PDF page
   useEffect(() => {
-    if (!pdfDoc) return;
+    if (!pdfDoc) {
+      console.log('[PageStage] No pdfDoc yet');
+      return;
+    }
     let cancelled = false;
     setRendering(true);
+    console.log(`[PageStage] Starting render for page ${pageNum}`);
+    
     pdfDoc.getPage(pageNum).then((page) => {
-      if (cancelled) return;
+      console.log(`[PageStage] Got page object for ${pageNum}`);
+      if (cancelled) {
+        console.log(`[PageStage] Render cancelled for ${pageNum}`);
+        return;
+      }
+      
       const containerEl = containerRef.current?.parentElement;
-      const maxW = (containerEl?.clientWidth || 1000) - 40;
-      const maxH = (containerEl?.clientHeight || 700) - 40;
+      const maxW = (containerEl?.clientWidth || window.innerWidth * 0.7) - 40;
+      const maxH = (containerEl?.clientHeight || window.innerHeight * 0.8) - 40;
+      console.log(`[PageStage] Container available size: ${maxW}x${maxH}`);
+      
       const v1 = page.getViewport({ scale: 1 });
-      const scale = Math.min(maxW / v1.width, maxH / v1.height);
+      const scale = Math.min(maxW / v1.width, maxH / v1.height) || 1.0;
       const viewport = page.getViewport({ scale });
-      const cssW = Math.floor(viewport.width);
-      const cssH = Math.floor(viewport.height);
+      const cssW = Math.max(100, Math.floor(viewport.width));
+      const cssH = Math.max(100, Math.floor(viewport.height));
       const dpr = window.devicePixelRatio || 1;
 
+      console.log(`[PageStage] Computed scale: ${scale.toFixed(3)}, CSS Size: ${cssW}x${cssH}`);
+
       const canvas = pdfCanvasRef.current;
+      if (!canvas) {
+        console.error('[PageStage] Canvas ref is NULL');
+        return;
+      }
+      
       canvas.width = Math.floor(viewport.width * dpr);
       canvas.height = Math.floor(viewport.height * dpr);
       canvas.style.width = cssW + 'px';
       canvas.style.height = cssH + 'px';
 
       const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        console.error('[PageStage] Failed to get canvas context');
+        return;
+      }
+      
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const renderTask = page.render({ canvasContext: ctx, viewport });
+      
       renderTask.promise
         .then(() => {
+          console.log(`[PageStage] Page ${pageNum} renderTask COMPLETED`);
           if (cancelled) return;
           setRenderSize({ w: cssW, h: cssH, dpr });
           setRendering(false);
         })
-        .catch(() => {});
+        .catch((err) => {
+          console.error(`[PageStage] Page ${pageNum} renderTask ERROR:`, err);
+        });
+    }).catch(err => {
+      console.error(`[PageStage] getPage(${pageNum}) FAILED:`, err);
     });
+    
     return () => {
       cancelled = true;
     };
@@ -114,20 +143,19 @@ export default function PageStage({
 
   const getNormPoint = (e) => {
     const canvas = drawCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   };
 
-  // 지우개 반경 (normalized) — UI thickness가 클수록 더 크게 닿음.
   const eraserRadiusN = () => {
     if (!renderSize) return 0.01;
-    const px = thickness * 4; // 약간 관대하게
+    const px = thickness * 4;
     return px / Math.min(renderSize.w, renderSize.h);
   };
 
-  // 현재 위치에서 닿는 모든 stroke를 지운다. 지운 stroke id 배열을 반환.
   const eraseAt = (np) => {
     if (strokes.length === 0) return [];
     const r = eraserRadiusN();
@@ -150,7 +178,7 @@ export default function PageStage({
 
     if (tool === 'eraser') {
       eraseAt(point);
-      drawingRef.current = { eraser: true }; // move에서 계속 지우기 위해 표시
+      drawingRef.current = { eraser: true };
       return;
     }
 
@@ -160,6 +188,7 @@ export default function PageStage({
       color: penColor,
       thickness,
       points: [point],
+      author: '강사',
     };
     drawingRef.current = stroke;
     const ctx = drawCanvasRef.current.getContext('2d');
@@ -167,8 +196,23 @@ export default function PageStage({
   };
 
   const handlePointerMove = (e) => {
-    if (!drawingRef.current) return;
     const point = getNormPoint(e);
+
+    if (!drawingRef.current) {
+      // 호버 검사
+      const r = eraserRadiusN() * 1.5;
+      const hit = strokes.find((s) => strokeHit(s, point.x, point.y, r));
+      if (hit) {
+        setHoverInfo({
+          x: e.clientX,
+          y: e.clientY,
+          author: hit.author || '알 수 없음',
+        });
+      } else {
+        setHoverInfo(null);
+      }
+      return;
+    }
 
     if (drawingRef.current.eraser) {
       eraseAt(point);
@@ -183,7 +227,6 @@ export default function PageStage({
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = s.color;
     ctx.lineWidth = s.thickness;
     const prev = s.points[s.points.length - 2];
@@ -198,7 +241,7 @@ export default function PageStage({
     if (!drawingRef.current) return;
     const cur = drawingRef.current;
     drawingRef.current = null;
-    if (cur.eraser) return; // 지우개는 이미 move/down에서 처리 완료
+    if (cur.eraser) return;
     if (cur.points.length >= 1) {
       onStrokesChange([...strokes, cur]);
     }
@@ -218,7 +261,23 @@ export default function PageStage({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={() => setHoverInfo(null)}
       />
+      
+      {hoverInfo && (
+        <div
+          className="author-popup"
+          style={{
+            position: 'fixed',
+            left: hoverInfo.x + 15,
+            top: hoverInfo.y + 15,
+          }}
+        >
+          <div className="author-popup-label">작성자</div>
+          <div className="author-popup-name">{hoverInfo.author}</div>
+        </div>
+      )}
+
       {rendering && (
         <div
           style={{

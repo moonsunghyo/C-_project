@@ -2,54 +2,94 @@ import { useEffect, useRef, useState } from 'react';
 import StartScreen from './components/StartScreen.jsx';
 import UploadScreen from './components/UploadScreen.jsx';
 import LectureMode from './components/LectureMode.jsx';
+import Icon from './components/Icon.jsx';
 
-// Java WebServer.java가 listen하는 포트
-const WS_URL = 'ws://172.20.10.2:8082';
+const WS_URL = 'ws://172.20.10.3:8082';
 
 export default function App() {
   const [view, setView] = useState('start'); // 'start' | 'upload' | 'lecture'
-  const [sessionCode, setSessionCode] = useState(null);
+  const [isStarted, setIsStarted] = useState(false);
   const [pdfData, setPdfData] = useState(null);
   const [fileName, setFileName] = useState('');
 
-  // WebSocket — 세션이 생긴 동안만 유지. 지금은 "연결 확인용"이라 송신 없음.
   const wsRef = useRef(null);
-  const [wsStatus, setWsStatus] = useState('idle'); // 'idle' | 'connecting' | 'connected' | 'error' | 'closed'
+  const reconnectTimerRef = useRef(null);
+  const [wsStatus, setWsStatus] = useState('idle');
+  const [toast, setToast] = useState(null);
 
-  useEffect(() => {
-    if (!sessionCode) return; // start 화면에서는 연결하지 않음
+  const showToast = (msg, duration = 3000) => {
+    setToast(msg);
+    if (duration > 0) {
+      setTimeout(() => setToast((t) => (t === msg ? null : t)), duration);
+    }
+  };
 
+  const connect = () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    
+    console.log('[ws] connecting to', WS_URL);
     setWsStatus('connecting');
+    
     const ws = new WebSocket(WS_URL);
-    // 서버가 broadcast하는 바이너리 프레임을 Blob이 아닌 ArrayBuffer로 받음.
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('[ws] connected to', WS_URL);
+      console.log('[ws] connected');
       setWsStatus('connected');
+      showToast('서버에 연결되었습니다.');
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
     };
-    // 여러 컴포넌트(LectureMode 등)도 같은 ws에 message 리스너를 붙일 수 있도록
-    // .onmessage 대신 addEventListener 사용.
-    const onMessage = (e) => console.log('[ws] message:', e.data);
-    ws.addEventListener('message', onMessage);
+
     ws.onerror = (err) => {
-      console.error('[ws] error', err);
+      console.error('[ws] error:', err);
       setWsStatus('error');
     };
+
     ws.onclose = () => {
       console.log('[ws] closed');
-      setWsStatus((s) => (s === 'error' ? 'error' : 'closed'));
-    };
-
-    return () => {
-      ws.close();
       wsRef.current = null;
+      
+      if (isStarted) {
+        setWsStatus('closed');
+        showToast('서버 연결이 끊겼습니다. 5초 후 재연결을 시도합니다...', 0);
+        
+        // 5초 후 재연결 시도
+        if (!reconnectTimerRef.current) {
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connect();
+          }, 5000);
+        }
+      } else {
+        setWsStatus('idle');
+      }
     };
-  }, [sessionCode]);
 
-  const handleStart = (code) => {
-    setSessionCode(code);
+    // Global message logger
+    ws.onmessage = (e) => {
+      // Logic handled in child components via addEventListener
+    };
+  };
+
+  useEffect(() => {
+    if (isStarted) {
+      connect();
+    } else {
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    }
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    };
+  }, [isStarted]);
+
+  const handleStart = () => {
+    setIsStarted(true);
     setView('upload');
   };
 
@@ -60,38 +100,45 @@ export default function App() {
   };
 
   const handleEnd = () => {
-    if (!confirm('세션을 종료하시겠습니까?')) return;
-    setSessionCode(null); // ← cleanup이 ws.close() 호출
+    if (!confirm('강의를 종료하시겠습니까?')) return;
+    setIsStarted(false);
     setPdfData(null);
     setFileName('');
     setView('start');
+    setToast(null);
   };
 
-  if (view === 'start') {
-    return <StartScreen onStart={handleStart} />;
-  }
-  if (view === 'upload') {
-    return (
-      <UploadScreen
-        sessionCode={sessionCode}
-        wsRef={wsRef}
-        wsStatus={wsStatus}
-        onUploaded={handleUploaded}
-        onEnd={handleEnd}
-      />
-    );
-  }
-  if (view === 'lecture') {
-    return (
-      <LectureMode
-        pdfData={pdfData}
-        fileName={fileName}
-        sessionCode={sessionCode}
-        wsRef={wsRef}
-        wsStatus={wsStatus}
-        onEnd={handleEnd}
-      />
-    );
-  }
-  return null;
+  return (
+    <>
+      {view === 'start' && <StartScreen onStart={handleStart} />}
+      {view === 'upload' && (
+        <UploadScreen
+          wsRef={wsRef}
+          wsStatus={wsStatus}
+          onUploaded={handleUploaded}
+          onEnd={handleEnd}
+        />
+      )}
+      {view === 'lecture' && (
+        <LectureMode
+          pdfData={pdfData}
+          fileName={fileName}
+          wsRef={wsRef}
+          wsStatus={wsStatus}
+          onEnd={handleEnd}
+        />
+      )}
+
+      {toast && (
+        <div className="connection-toast">
+          {wsStatus === 'connecting' || wsStatus === 'closed' ? (
+            <span className="spinner" style={{ width: 14, height: 14, borderTopColor: 'white' }} />
+          ) : (
+            <Icon name={wsStatus === 'connected' ? 'check' : 'alertCircle'} size={16} />
+          )}
+          {toast}
+        </div>
+      )}
+    </>
+  );
 }
