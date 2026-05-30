@@ -1,11 +1,13 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QStyleFactory>
 
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    a.setStyle(QStyleFactory::create("Fusion")); // 플랫폼 무관하게 스타일시트가 완전히 적용되도록
     // 프로그램에서 받아야 할 이벤트들을 가져와주는 역할.
     // OS로부터 받아올 인자들로 초기화 됨.
 

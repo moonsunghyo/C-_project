@@ -14,6 +14,8 @@
 #include <QSlider>
 #include <QLineEdit>
 #include <QVBoxLayout>  // canvasContainer에 레이아웃을 붙이기 위해 필요
+#include <QGridLayout>
+#include <QPushButton>
 #include <QBuffer>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -48,6 +50,7 @@ MainWindow::MainWindow(QWidget *parent)
     //// 서버 관련
     connect(ui->actionConnet_to_Server, &QAction::triggered, this, &MainWindow::onConnectToServer);
 
+    setupColorPalette();
 
     // tcpSocket 초기화
     tcpSocket = new QTcpSocket(this);   //QT에서 데이터 송수신을 감지해서, 이 객체를 통해 시그널 함수들을 emit 해 줌
@@ -67,6 +70,39 @@ MainWindow::~MainWindow() {
 //
 // **********************************************************
 
+void MainWindow::setupColorPalette() {
+    QGridLayout* grid = new QGridLayout(ui->colorSwatchContainer);
+    grid->setSpacing(4);
+    grid->setContentsMargins(0, 0, 0, 0);
+
+    const QList<QColor> colors = {
+        QColor("#1a1a1a"), QColor("#f0f0f0"), QColor("#e53935"), QColor("#fb8c00"),
+        QColor("#fdd835"), QColor("#43a047"), QColor("#1e88e5"), QColor("#8e24aa"),
+        QColor("#00acc1"), QColor("#f06292"), QColor("#795548"), QColor("#607d8b"),
+    };
+
+    int col = 0, row = 0;
+    for (const QColor& c : colors) {
+        QPushButton* btn = new QPushButton(ui->colorSwatchContainer);
+        btn->setFixedSize(24, 24);
+        btn->setStyleSheet(QString(
+            "QPushButton { background-color: %1; border: 2px solid transparent; border-radius: 4px; }"
+            "QPushButton:hover { border-color: #aaaaaa; }"
+        ).arg(c.name()));
+        connect(btn, &QPushButton::clicked, this, [this, c]() {
+            currentColor = c;
+            ui->colorPickerButton->setStyleSheet(
+                QString("background-color: %1; border: 2px solid #555555; border-radius: 5px;"
+                        "min-height: 30px; font-size: 11px; font-weight: 600; color: %2;")
+                    .arg(c.name())
+                    .arg(c.lightness() > 128 ? "#000000" : "#ffffff"));
+            if (canvas) canvas->setPenColor(currentColor);
+        });
+        grid->addWidget(btn, row, col++);
+        if (col >= 4) { col = 0; row++; }
+    }
+}
+
 void MainWindow::onNewCanvas() {
     bool ok1, ok2;
     int w = QInputDialog::getInt(this, "Width",  "Enter width:",  400, 100, 2000, 1, &ok1);//간단히 사용자한테 숫자 입력 받기
@@ -79,11 +115,15 @@ void MainWindow::onNewCanvas() {
 
 void MainWindow::onPen()
 {
+    ui->actionPen->setChecked(true);
+    ui->actionEraser->setChecked(false);
     if (canvas) canvas->setTool(Canvas::Tool::Pen);
 }
 
 void MainWindow::onEraser()
 {
+    ui->actionEraser->setChecked(true);
+    ui->actionPen->setChecked(false);
     if (canvas) canvas->setTool(Canvas::Tool::Eraser);
 }
 
@@ -113,8 +153,11 @@ void MainWindow::onColorPicker()
     QColor color = QColorDialog::getColor(currentColor, this, "색상 선택"); //기본적으로 있는 색상 선택 dialog 팝업
     if (color.isValid()) {
         currentColor = color;
-        ui->colorPickerButton->setStyleSheet(   // color picker 버튼 색 바꿔주기.
-            QString("background-color: %1; border: 1px solid #888;").arg(color.name()));
+        ui->colorPickerButton->setStyleSheet(
+            QString("background-color: %1; border: 2px solid #707070; border-radius: 6px; "
+                    "min-height: 40px; font-size: 13px; font-weight: bold; color: %2;")
+                .arg(color.name())
+                .arg(color.lightness() > 128 ? "#000000" : "#ffffff"));
         if (canvas) canvas->setPenColor(currentColor);
     }
 }
@@ -130,7 +173,7 @@ void MainWindow::onConnectToServer() {
     bool ok;
 
     // 필요 정보 입력받기
-    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.2", &ok);
+    QString host = QInputDialog::getText(this, "서버 연결", "서버 IP:", QLineEdit::Normal, "172.20.10.3", &ok);
     if (!ok || host.isEmpty()) return;
 
     int port = QInputDialog::getInt(this, "서버 연결", "포트:", 8081, 1, 65535, 1, &ok);
@@ -317,9 +360,47 @@ void MainWindow::onSocketReadyRead() {
 
             qint32 pageIndex;
             ds >> pageIndex;
+            int consumed = 8; // type(4) + pageIndex(4)
 
-            receiveBuffer.remove(0, 8);
-            if (canvas) canvas->onPageIndexReceived((int)pageIndex - 1);
+            // 이 페이지에 저장된 획들: 헤더(20바이트) 읽을 수 없을 때까지 반복
+            // remove는 내부 루프에서 호출하면 QDataStream position이 어긋나므로 마지막에 한 번만 호출
+            QList<Stroke> pageStrokes;
+            while (ds.device()->bytesAvailable() >= 20) {
+                char headerBuf[20];
+                ds.device()->peek(headerBuf, 20);
+                qint32 pointCount;
+                memcpy(&pointCount, &headerBuf[8], sizeof(qint32));
+                pointCount = qFromBigEndian(pointCount);
+
+                if (ds.device()->bytesAvailable() < 20 + pointCount * 8) break;
+
+                qint64 id;
+                qint32 pc, color, size;
+                ds >> id >> pc >> color >> size;
+
+                Stroke stroke;
+                stroke.id    = id;
+                stroke.color = QColor::fromRgba((QRgb)color);
+                stroke.size  = size;
+                for (int i = 0; i < pc; i++) {
+                    float x, y;
+                    ds >> x >> y;
+                    stroke.points.append(QPoint(
+                        static_cast<int>(x * canvas->width()),
+                        static_cast<int>(y * canvas->height())
+                    ));
+                }
+                pageStrokes.append(stroke);
+                consumed += 20 + pc * 8;
+            }
+
+            receiveBuffer.remove(0, consumed);
+
+            if (canvas) {
+                canvas->onPageIndexReceived((int)pageIndex - 1);
+                for (const Stroke& s : pageStrokes)
+                    canvas->onStrokeReceived(s);
+            }
 
         } else {
             // 알 수 없는 타입 — 버퍼 초기화 (오류 방어)
